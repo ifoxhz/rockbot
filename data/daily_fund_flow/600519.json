@@ -1,0 +1,309 @@
+{
+  "code": "600519",
+  "unit": "million_cny",
+  "source": "eastmoney",
+  "algorithm_version": "daily_fund_flow_v1",
+  "generated_at": "2026-01-31T05:45:33.487Z",
+  "data": [
+    {
+      "date": "2025-12-18",
+      "small": -0.032,
+      "medium": 81.435,
+      "large": -122.26,
+      "extra_large": 40.857,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2025-12-19",
+      "small": -0.177,
+      "medium": 203.422,
+      "large": 15.278,
+      "extra_large": -218.522,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2025-12-22",
+      "small": -0.089,
+      "medium": 89.373,
+      "large": 155.965,
+      "extra_large": -245.249,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2025-12-23",
+      "small": -0.117,
+      "medium": 270.774,
+      "large": -96.312,
+      "extra_large": -174.345,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2025-12-24",
+      "small": -0.206,
+      "medium": 52.863,
+      "large": 98.34,
+      "extra_large": -150.997,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2025-12-25",
+      "small": -0.302,
+      "medium": -318.645,
+      "large": 26.121,
+      "extra_large": 292.826,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2025-12-26",
+      "small": -0.125,
+      "medium": -73.914,
+      "large": 231.671,
+      "extra_large": -157.632,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2025-12-29",
+      "small": -0.097,
+      "medium": 150.704,
+      "large": -0.722,
+      "extra_large": -149.885,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2025-12-30",
+      "small": -0.152,
+      "medium": 726.005,
+      "large": -310.361,
+      "extra_large": -415.493,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2025-12-31",
+      "small": -0.338,
+      "medium": 747.741,
+      "large": -281.246,
+      "extra_large": -466.157,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-05",
+      "small": -0.464,
+      "medium": -1025.448,
+      "large": 458.195,
+      "extra_large": 567.718,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-06",
+      "small": -0.357,
+      "medium": 172.52,
+      "large": -246.828,
+      "extra_large": 74.665,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-07",
+      "small": -0.216,
+      "medium": 177.763,
+      "large": -259.43,
+      "extra_large": 81.883,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-08",
+      "small": -0.357,
+      "medium": 362.755,
+      "large": -284.082,
+      "extra_large": -78.315,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-09",
+      "small": -0.126,
+      "medium": -98.388,
+      "large": 170.723,
+      "extra_large": -72.21,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-12",
+      "small": -0.261,
+      "medium": 61.195,
+      "large": 45.617,
+      "extra_large": -106.551,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-13",
+      "small": -0.119,
+      "medium": 513.328,
+      "large": -287.261,
+      "extra_large": -225.948,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-14",
+      "small": -0.452,
+      "medium": 638.731,
+      "large": 5.29,
+      "extra_large": -643.569,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-15",
+      "small": -0.078,
+      "medium": 416.462,
+      "large": -614.919,
+      "extra_large": 198.536,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-16",
+      "small": -0.239,
+      "medium": 368.514,
+      "large": -977.032,
+      "extra_large": 608.756,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-19",
+      "small": -0.018,
+      "medium": 515.354,
+      "large": -409.45,
+      "extra_large": -105.886,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-20",
+      "small": -0.085,
+      "medium": 50.35,
+      "large": -469.048,
+      "extra_large": 418.784,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-21",
+      "small": -0.168,
+      "medium": 1480.612,
+      "large": -744.953,
+      "extra_large": -735.491,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-22",
+      "small": -0.55,
+      "medium": 854.745,
+      "large": -332.464,
+      "extra_large": -521.731,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-23",
+      "small": -2.997,
+      "medium": 157.6,
+      "large": -27.095,
+      "extra_large": -127.509,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-26",
+      "small": -1.187,
+      "medium": -47.367,
+      "large": -309.525,
+      "extra_large": 358.079,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-27",
+      "small": -0.161,
+      "medium": -398.126,
+      "large": 231.414,
+      "extra_large": 166.873,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-28",
+      "small": -1.873,
+      "medium": 1334.403,
+      "large": -845.088,
+      "extra_large": -487.442,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-29",
+      "small": -2.391,
+      "medium": -3336.644,
+      "large": 777.074,
+      "extra_large": 2561.961,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    },
+    {
+      "date": "2026-01-30",
+      "small": -0.435,
+      "medium": 449.335,
+      "large": -138.941,
+      "extra_large": -309.959,
+      "unit": "million",
+      "currency": "CNY",
+      "source": "eastmoney"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "rockbot",
+  "version": "1.0.0",
+  "description": "rock the store wiht js",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "rockbot": "bin/cli.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "cli": "node bin/cli.js"
+  },
+  "dependencies": {
+    "commander": "^11.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  },
+  "author": "",
+  "license": "ISC"
+}
