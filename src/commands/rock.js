@@ -1,6 +1,7 @@
 import { Command } from 'commander';
+import 'dotenv/config';
 import { fetchDailyFundFlow, normalizeDailyFlow } from '../services/tushareDailyFlow.js';
-import { storeDailyFundFlow, checkSmallNetBuyStreak } from '../services/storeDailyFlow.js';
+import { storeDailyFundFlow, applyStockFilters, checkSmallNetBuyStreak } from '../services/storeDailyFlow.js';
 
 export const rockCommand = new Command('rock')
   .argument('<start>', 'start stock code or range like 600030-600040')
@@ -16,8 +17,10 @@ export const rockCommand = new Command('rock')
         const daily = normalizeDailyFlow(raw);
         storeDailyFundFlow(code, daily);
 
-        const check = checkSmallNetBuyStreak(code, 5);
-        if (check.meets_requirement) {
+        const check = applyStockFilters(code, [
+          checkSmallNetBuyStreak(5),
+        ]);
+        if (check.passed) {
           matched.push(code);
         }
       } catch (err) {
@@ -31,13 +34,25 @@ export const rockCommand = new Command('rock')
           status: 'ok',
           total: codes.length,
           matched_count: matched.length,
-          matched_codes: matched,
-          errors
+          matched_codes: matched
         },
         null,
         2
       )
     );
+
+    if (errors.length > 0) {
+      process.stderr.write(
+        JSON.stringify(
+          {
+            status: 'error',
+            errors
+          },
+          null,
+          2
+        )
+      );
+    }
   });
 
 function buildCodeRange(start, end) {

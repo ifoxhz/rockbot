@@ -49,7 +49,64 @@ export function checkSmallNetBuyDays(code, minDays = 5) {
   };
 }
 
-export function checkSmallNetBuyStreak(code, minDays = 5) {
+export function applyStockFilters(code, filters = []) {
+  const rows = readDailyFundFlow(code);
+  const ctx = { code, rows };
+
+  const passed = Array.isArray(filters) && filters.length > 0
+    ? filters.every((fn) => safeFilter(fn, ctx))
+    : true;
+
+  return {
+    code,
+    total_days: rows.length,
+    passed
+  };
+}
+
+// Hook / filter: returns a function that checks streak with row-level filters
+export function checkSmallNetBuyStreak(minDays = 5, rowFilters = defaultRowFilters()) {
+  return (ctx) => {
+    const rows = Array.isArray(ctx?.rows) ? ctx.rows : [];
+    const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date));
+
+    let maxStreak = 0;
+    let currentStreak = 0;
+
+    for (let i = 0; i < sorted.length; i++) {
+      const row = sorted[i];
+      const isConsecutiveTradingDay = i > 0; // adjacency in data = consecutive trading day
+      const meetsAll = applyRowFilters(rowFilters, row);
+
+      if (meetsAll) {
+        if (currentStreak === 0) {
+          currentStreak = 1;
+        } else if (isConsecutiveTradingDay) {
+          currentStreak += 1;
+        } else {
+          currentStreak = 1;
+        }
+      } else {
+        currentStreak = 0;
+      }
+
+      if (currentStreak > maxStreak) {
+        maxStreak = currentStreak;
+      }
+    }
+
+    return maxStreak >= minDays;
+  };
+}
+
+export function defaultRowFilters() {
+  return [
+    (row) => Number(row.small) > 0,
+    (row) => row.change_pct != null && Number(row.change_pct) >= -1.8,
+  ];
+}
+
+function readDailyFundFlow(code) {
   const filePath = path.resolve('data/daily_fund_flow', `${code}.json`);
   if (!fs.existsSync(filePath)) {
     throw new Error(`Daily fund flow data not found for code ${code}`);
@@ -57,48 +114,24 @@ export function checkSmallNetBuyStreak(code, minDays = 5) {
 
   const raw = fs.readFileSync(filePath, 'utf-8');
   const payload = JSON.parse(raw);
-  const rows = Array.isArray(payload?.data) ? payload.data : [];
+  return Array.isArray(payload?.data) ? payload.data : [];
+}
 
-  // Ensure ascending by date for streak calculation
-  const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date));
-
-  let maxStreak = 0;
-  let currentStreak = 0;
-  let currentStart = null;
-  let bestRange = null;
-
-  for (let i = 0; i < sorted.length; i++) {
-    const row = sorted[i];
-    const isPositive = Number(row.small) > 0;
-    const isConsecutiveTradingDay = i > 0; // adjacency in data = consecutive trading day
-
-    if (isPositive) {
-      if (currentStreak === 0) {
-        currentStart = row.date;
-        currentStreak = 1;
-      } else if (isConsecutiveTradingDay) {
-        currentStreak += 1;
-      } else {
-        currentStart = row.date;
-        currentStreak = 1;
-      }
-    } else {
-      currentStreak = 0;
-      currentStart = null;
+function applyRowFilters(filters, row) {
+  if (!Array.isArray(filters) || filters.length === 0) return true;
+  return filters.every((fn) => {
+    try {
+      return fn(row) === true;
+    } catch {
+      return false;
     }
+  });
+}
 
-    if (currentStreak > maxStreak) {
-      maxStreak = currentStreak;
-      bestRange = currentStreak > 0 ? { start: currentStart, end: row.date } : null;
-    }
+function safeFilter(fn, ctx) {
+  try {
+    return fn(ctx) === true;
+  } catch {
+    return false;
   }
-
-  return {
-    code,
-    total_days: rows.length,
-    min_days: minDays,
-    max_streak: maxStreak,
-    meets_requirement: maxStreak >= minDays,
-    best_range: bestRange
-  };
 }
