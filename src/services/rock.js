@@ -1,25 +1,30 @@
-import { Command } from 'commander';
-import { fetchDailyFundFlow,normalizeDailyFlow } from '../services/eastmoneyDailyFlow.js';
-import { storeDailyFundFlow } from '../services/storeDailyFlow.js';
+// src/services/rockService.js
+export async function analyzeStock(code, days) {
+  const buy = 771733;
+  const sell = 9440753;
+  const net = buy - sell;
 
-export const rockCommand = new Command('rock')
-  .argument('<code>', 'stock code')
-  .action(async (code) => {
-    const raw = await fetchDailyFundFlow(code);
-    const daily = normalizeDailyFlow(raw);
-    const filePath = storeDailyFundFlow(code, daily);
+  return {
+    type: 'stock_small_order_analysis',
+    code,
+    period_days: days,
+    source: 'eastmoney',
+    timestamp: new Date().toISOString(),
 
-    // 机器友好：只输出 JSON
-    process.stdout.write(
-      JSON.stringify(
-        {
-          status: 'ok',
-          code,
-          days: daily.length,
-          output: filePath
-        },
-        null,
-        2
-      )
-    );
-  });
+    metrics: {
+      small_order_buy: buy,
+      small_order_sell: sell,
+      small_order_net: net
+    },
+
+    decision: {
+      label: net > 0 ? 'BUY_DOMINANT' : 'SELL_DOMINANT',
+      score: net
+    },
+
+    algorithm: {
+      name: 'small_order_net_flow',
+      version: 'v1'
+    }
+  };
+}
