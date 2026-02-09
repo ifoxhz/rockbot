@@ -1,7 +1,8 @@
 import { Command } from 'commander';
 import 'dotenv/config';
 import { fetchDailyFundFlow, normalizeDailyFlow } from '../services/tushareDailyFlow.js';
-import { storeDailyFundFlow, applyStockFilters, checkSmallNetBuyStreak } from '../services/storeDailyFlow.js';
+import { storeDailyFundFlow, applyStockFilters, checkSmallNetBuyStreak, changePctStddev, risingDaysGreater, storeDailyAnalysisFile, todayDate } from '../services/storeDailyFlow.js';
+import { sendMatchedEmail, buildMatchedEmail } from '../services/email.js';
 
 export const rockCommand = new Command('rock')
   .argument('<start>', 'start stock code or range like 600030-600040')
@@ -10,22 +11,67 @@ export const rockCommand = new Command('rock')
     const codes = buildCodeRange(start, end);
     const matched = [];
     const errors = [];
+    const analysisResults = [];
+    const downloadDate = todayDate();
 
     for (const code of codes) {
       try {
         const raw = await fetchDailyFundFlow(code);
         const daily = normalizeDailyFlow(raw);
-        storeDailyFundFlow(code, daily);
+        if (!Array.isArray(daily) || daily.length === 0) {
+          // errors.push({ code, error: 'Empty daily fund flow data' });
+          continue;
+        }
+        storeDailyFundFlow(code, daily, { date: downloadDate });
 
         const check = applyStockFilters(code, [
           checkSmallNetBuyStreak(5),
-        ]);
+          changePctStddev(1.62, 2.5),
+          risingDaysGreater(),
+        ], { date: downloadDate });
+        const result = { code, ...check };
         if (check.passed) {
           matched.push(code);
         }
+        analysisResults.push(result);
       } catch (err) {
         errors.push({ code, error: err?.message || String(err) });
       }
+
+      // throttle to avoid Tushare rate limits
+      await sleep(350);
+    }
+
+    storeDailyAnalysisFile(
+      {
+        source: 'download_run',
+        total: codes.length,
+        matched_count: matched.length,
+        matched_codes: matched,
+        results: analysisResults,
+        errors
+      },
+      { date: downloadDate }
+    );
+
+    const matchedResults = analysisResults.filter((item) => item.passed === true);
+    if (matchedResults.length > 0) {
+      process.stdout.write('\nMatched results:\n');
+      process.stdout.write(`${JSON.stringify(matchedResults, null, 2)}\n`);
+    } else {
+      process.stdout.write('\nMatched results: (none)\n');
+    }
+
+    try {
+      const body = buildMatchedEmail({ date: downloadDate, matched: matchedResults });
+      await sendMatchedEmail({
+        from: 'onboarding@resend.dev',
+        to: 'ifoxhz@hotmail.com',
+        subject: `Rock matched results ${downloadDate}`,
+        text: body
+      });
+    } catch (err) {
+      errors.push({ code: 'email', error: err?.message || String(err) });
     }
 
     process.stdout.write(
@@ -34,7 +80,8 @@ export const rockCommand = new Command('rock')
           status: 'ok',
           total: codes.length,
           matched_count: matched.length,
-          matched_codes: matched
+          matched_codes: matched,
+          download_date: downloadDate
         },
         null,
         2
@@ -54,6 +101,10 @@ export const rockCommand = new Command('rock')
       );
     }
   });
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function buildCodeRange(start, end) {
   if (start.includes('-')) {

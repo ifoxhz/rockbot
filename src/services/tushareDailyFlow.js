@@ -1,6 +1,11 @@
 // src/services/tushareDailyFlow.js
 
 const TUSHARE_API_URL = 'https://api.tushare.pro';
+const RATE_LIMIT_PER_MIN = 200;
+const RATE_WINDOW_MS = 60_000;
+
+let windowStart = Date.now();
+let requestCount = 0;
 
 /**
  * Fetch raw daily fund flow data from Tushare (moneyflow + daily)
@@ -42,8 +47,20 @@ export async function fetchDailyFundFlow(code, days = 15) {
     'pct_chg',
   ]);
 
+  const dailyBasicRows = await tushareRequest(token, 'daily_basic', {
+    ts_code,
+    start_date: startDate,
+    end_date: endDate,
+  }, [
+    'trade_date',
+    'turnover_rate',
+  ]);
+
   const pctMap = new Map(
     dailyRows.map((row) => [row.trade_date, row.pct_chg])
+  );
+  const turnoverMap = new Map(
+    dailyBasicRows.map((row) => [row.trade_date, row.turnover_rate])
   );
 
   const mapped = moneyflowRows.map((row) => ({
@@ -53,6 +70,7 @@ export async function fetchDailyFundFlow(code, days = 15) {
     large: toCnyNet(row.buy_lg_amount, row.sell_lg_amount),
     extra_large: toCnyNet(row.buy_elg_amount, row.sell_elg_amount),
     change_pct: pctMap.has(row.trade_date) ? pctMap.get(row.trade_date) : null,
+    turnover_rate: turnoverMap.has(row.trade_date) ? turnoverMap.get(row.trade_date) : null,
   }));
 
   mapped.sort((a, b) => a.date.localeCompare(b.date));
@@ -72,6 +90,7 @@ export function normalizeDailyFlow(rows) {
     large: toMillion(row.large),
     extra_large: toMillion(row.extra_large),
     change_pct: row.change_pct,
+    turnover_rate: row.turnover_rate,
     unit: 'million',
     currency: 'CNY',
     source: 'tushare',
@@ -81,6 +100,7 @@ export function normalizeDailyFlow(rows) {
 /* ---------------- helpers ---------------- */
 
 async function tushareRequest(token, apiName, params, fields) {
+  await adaptiveThrottle();
   const res = await fetch(TUSHARE_API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -110,6 +130,39 @@ async function tushareRequest(token, apiName, params, fields) {
     }
     return row;
   });
+}
+
+async function adaptiveThrottle() {
+  const now = Date.now();
+  if (now - windowStart >= RATE_WINDOW_MS) {
+    windowStart = now;
+    requestCount = 0;
+  }
+
+  requestCount += 1;
+
+  const remaining = RATE_LIMIT_PER_MIN - requestCount;
+  if (remaining <= 0) {
+    const waitMs = RATE_WINDOW_MS - (now - windowStart) + 50;
+    await sleep(waitMs);
+    windowStart = Date.now();
+    requestCount = 0;
+    return;
+  }
+
+  // ramp up delay as we approach the limit
+  const usedRatio = requestCount / RATE_LIMIT_PER_MIN;
+  if (usedRatio > 0.7 && usedRatio <= 0.85) {
+    await sleep(120);
+  } else if (usedRatio > 0.85 && usedRatio <= 0.95) {
+    await sleep(250);
+  } else if (usedRatio > 0.95) {
+    await sleep(500);
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function normalizeTsCode(code) {
