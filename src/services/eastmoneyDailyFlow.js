@@ -27,11 +27,11 @@ export async function fetchDailyFundFlow(code, days = 15) {
     fields2: 'f53,f54,f55,f56',
   });
 
-  const pctRows = await fetchDailyPctChange({
+  const dailyRows = await fetchDailyMarketData({
     secid,
     days,
   });
-  const pctMap = new Map(pctRows.map((row) => [row.date, row.change_pct]));
+  const dailyMap = new Map(dailyRows.map((row) => [row.date, row]));
 
   if (dates.length !== flows.length) {
     throw new Error(
@@ -47,7 +47,8 @@ export async function fetchDailyFundFlow(code, days = 15) {
       medium,
       large,
       extra_large: extraLarge,
-      change_pct: pctMap.get(date) ?? null,
+      change_pct: dailyMap.get(date)?.change_pct ?? null,
+      turnover_rate: dailyMap.get(date)?.turnover_rate ?? null,
     };
   });
 }
@@ -65,6 +66,7 @@ export function normalizeDailyFlow(rows) {
     large: toMillion(row.large),
     extra_large: toMillion(row.extra_large),
     change_pct: row.change_pct,
+    turnover_rate: row.turnover_rate,
     unit: 'million',
     currency: 'CNY',
     source: 'eastmoney',
@@ -99,7 +101,7 @@ async function fetchKlines({ secid, days, fields2 }) {
   });
 }
 
-async function fetchDailyPctChange({ secid, days }) {
+async function fetchDailyMarketData({ secid, days }) {
   const url =
     `${EASTMONEY_KLINE_URL}` +
     `?secid=${secid}` +
@@ -129,6 +131,7 @@ async function fetchDailyPctChange({ secid, days }) {
     return {
       date: parts[0],
       change_pct: Number(parts[8]),
+      turnover_rate: Number(parts[10]),
     };
   });
 }

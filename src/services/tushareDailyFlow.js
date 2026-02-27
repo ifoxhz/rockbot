@@ -20,7 +20,7 @@ export async function fetchDailyFundFlow(code, days = 15) {
 
   const ts_code = normalizeTsCode(code);
   const endDate = formatDate(new Date());
-  const startDate = formatDate(addDays(new Date(), -days * 3));
+  const startDate = formatDate(addDays(new Date(), -days * 2));
 
   const moneyflowRows = await tushareRequest(token, 'moneyflow', {
     ts_code,
@@ -133,6 +133,11 @@ async function tushareRequest(token, apiName, params, fields) {
 }
 
 async function adaptiveThrottle() {
+  // Debug escape hatch: skip all waits when explicitly enabled.
+  // if (process.env.TUSHARE_SKIP_THROTTLE === '1') {
+  //   return;
+  // }
+  return
   const now = Date.now();
   if (now - windowStart >= RATE_WINDOW_MS) {
     windowStart = now;

@@ -2,20 +2,27 @@ import { Command } from 'commander';
 import {
   listDailyFundFlowFiles,
   readDailyFundFlowPayload,
-  applyStockFilters,
-  checkSmallNetBuyStreak,
-  changePctStddev,
-  risingDaysGreater,
+  runStockAnalysis,
   storeDailyAnalysisFile,
-  normalizeDateInput
+  normalizeDateInput,
+  getDefaultAnalysisConfig
 } from '../services/storeDailyFlow.js';
+
+const DEFAULT_MIN_TURNOVER = getDefaultAnalysisConfig().minTurnover;
 
 export const reanalyzeCommand = new Command('reanalyze')
   .argument('<date>', 'download date (YYYY-MM-DD or YYYYMMDD)')
-  .action((dateInput) => {
+  .option('-m, --min-turnover <value>', 'minimum average turnover rate', String(DEFAULT_MIN_TURNOVER))
+  .action((dateInput, options) => {
     const date = normalizeDateInput(dateInput);
     if (!date) {
       process.stderr.write('Invalid date format. Use YYYY-MM-DD or YYYYMMDD.\n');
+      process.exitCode = 1;
+      return;
+    }
+    const minTurnover = Number(options.minTurnover);
+    if (!Number.isFinite(minTurnover)) {
+      process.stderr.write('Invalid --min-turnover value\n');
       process.exitCode = 1;
       return;
     }
@@ -34,11 +41,7 @@ export const reanalyzeCommand = new Command('reanalyze')
     for (const { code, filePath } of files) {
       try {
         const { rows } = readDailyFundFlowPayload(code, date);
-        const check = applyStockFilters(code, [
-          checkSmallNetBuyStreak(5),
-          changePctStddev(1.62, 2.5),
-          risingDaysGreater(),
-        ], { rows, date });
+        const check = runStockAnalysis(code, { rows, date, minTurnover });
 
         if (check.passed) {
           matched.push(code);
@@ -56,6 +59,7 @@ export const reanalyzeCommand = new Command('reanalyze')
     storeDailyAnalysisFile(
       {
         source: 'reanalyze',
+        min_turnover: minTurnover,
         total: files.length,
         matched_count: matched.length,
         matched_codes: matched,
@@ -72,7 +76,8 @@ export const reanalyzeCommand = new Command('reanalyze')
           total: files.length,
           matched_count: matched.length,
           matched_codes: matched,
-          analysis_date: date
+          analysis_date: date,
+          min_turnover: minTurnover
         },
         null,
         2

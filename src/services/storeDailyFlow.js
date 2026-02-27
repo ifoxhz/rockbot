@@ -3,6 +3,12 @@ import path from 'path';
 
 const DAILY_BASE_DIR = path.resolve('data/daily_fund_flow');
 const ANALYSIS_BASE_DIR = path.resolve('data/analysis');
+const DEFAULT_ANALYSIS_CONFIG = {
+  minStreakDays: 5,
+  stddevMin: 1.618,
+  stddevMax: 2.618,
+  minTurnover: 3.0,
+};
 
 export function storeDailyFundFlow(code, dailyData, options = {}) {
   const date = normalizeDateInput(options.date) || todayDate();
@@ -68,6 +74,16 @@ export function applyStockFilters(code, filters = [], options = {}) {
     passed,
     outputs
   };
+}
+
+export function runStockAnalysis(code, options = {}) {
+  const config = resolveAnalysisConfig(options);
+  const filters = buildStockFilters(config);
+
+  return applyStockFilters(code, filters, {
+    rows: options.rows,
+    date: options.date,
+  });
 }
 
 // Hook / filter: returns a function that checks streak with row-level filters
@@ -140,10 +156,48 @@ export function risingDaysGreater() {
   };
 }
 
+// Hook / filter: average turnover_rate must be greater than threshold
+export function averageTurnoverRateGreaterThan(minTurnoverRate) {
+  return (ctx) => {
+    const rows = Array.isArray(ctx?.rows) ? ctx.rows : [];
+    const values = rows
+      .map((row) => Number(row.turnover_rate))
+      .filter((v) => Number.isFinite(v));
+
+    if (values.length === 0) return false;
+
+    const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+    return avg > Number(minTurnoverRate);
+  };
+}
+
+export function buildStockFilters(config = {}) {
+  const resolved = resolveAnalysisConfig(config);
+  return [
+    checkSmallNetBuyStreak(resolved.minStreakDays),
+    changePctStddev(resolved.stddevMin, resolved.stddevMax),
+    risingDaysGreater(),
+    averageTurnoverRateGreaterThan(resolved.minTurnover),
+  ];
+}
+
+export function resolveAnalysisConfig(overrides = {}) {
+  return {
+    minStreakDays: toFiniteOrDefault(overrides.minStreakDays, DEFAULT_ANALYSIS_CONFIG.minStreakDays),
+    stddevMin: toFiniteOrDefault(overrides.stddevMin, DEFAULT_ANALYSIS_CONFIG.stddevMin),
+    stddevMax: toFiniteOrDefault(overrides.stddevMax, DEFAULT_ANALYSIS_CONFIG.stddevMax),
+    minTurnover: toFiniteOrDefault(overrides.minTurnover, DEFAULT_ANALYSIS_CONFIG.minTurnover),
+  };
+}
+
+export function getDefaultAnalysisConfig() {
+  return { ...DEFAULT_ANALYSIS_CONFIG };
+}
+
 export function defaultRowFilters() {
   return [
     (row) => Number(row.small) > 0,
-    (row) => row.change_pct != null && Number(row.change_pct) >= -1.8,
+    (row) => row.change_pct != null && !isNaN(Number(row.change_pct)),
   ];
 }
 
@@ -231,6 +285,11 @@ function calculateStddev(values) {
   const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
   const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
   return Number(Math.sqrt(variance).toFixed(4));
+}
+
+function toFiniteOrDefault(value, fallback) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
 }
 
 export function normalizeDateInput(input) {

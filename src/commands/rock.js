@@ -1,13 +1,21 @@
 import { Command } from 'commander';
 import 'dotenv/config';
 import { fetchDailyFundFlow, normalizeDailyFlow } from '../services/tushareDailyFlow.js';
-import { storeDailyFundFlow, applyStockFilters, checkSmallNetBuyStreak, changePctStddev, risingDaysGreater, storeDailyAnalysisFile, todayDate } from '../services/storeDailyFlow.js';
+import { storeDailyFundFlow, runStockAnalysis, storeDailyAnalysisFile, todayDate, getDefaultAnalysisConfig } from '../services/storeDailyFlow.js';
 import { sendMatchedEmail, buildMatchedEmail } from '../services/email.js';
+
+const DEFAULT_MIN_TURNOVER = getDefaultAnalysisConfig().minTurnover;
 
 export const rockCommand = new Command('rock')
   .argument('<start>', 'start stock code or range like 600030-600040')
   .argument('[end]', 'end stock code')
-  .action(async (start, end) => {
+  .option('-m, --min-turnover <value>', 'minimum average turnover rate', String(DEFAULT_MIN_TURNOVER))
+  .action(async (start, end, options) => {
+    const minTurnover = Number(options.minTurnover);
+    if (!Number.isFinite(minTurnover)) {
+      throw new Error('Invalid --min-turnover value');
+    }
+
     const codes = buildCodeRange(start, end);
     const matched = [];
     const errors = [];
@@ -24,11 +32,10 @@ export const rockCommand = new Command('rock')
         }
         storeDailyFundFlow(code, daily, { date: downloadDate });
 
-        const check = applyStockFilters(code, [
-          checkSmallNetBuyStreak(5),
-          changePctStddev(1.62, 2.5),
-          risingDaysGreater(),
-        ], { date: downloadDate });
+        const check = runStockAnalysis(code, {
+          date: downloadDate,
+          minTurnover,
+        });
         const result = { code, ...check };
         if (check.passed) {
           matched.push(code);
@@ -38,7 +45,7 @@ export const rockCommand = new Command('rock')
         errors.push({ code, error: err?.message || String(err) });
       }
 
-      // throttle to avoid Tushare rate limits
+      // throttle between symbols to reduce upstream pressure
       await sleep(350);
     }
 
@@ -81,7 +88,8 @@ export const rockCommand = new Command('rock')
           total: codes.length,
           matched_count: matched.length,
           matched_codes: matched,
-          download_date: downloadDate
+          download_date: downloadDate,
+          min_turnover: minTurnover
         },
         null,
         2
