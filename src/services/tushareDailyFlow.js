@@ -66,9 +66,13 @@ export async function fetchDailyFundFlow(code, days = 15) {
   const mapped = moneyflowRows.map((row) => ({
     date: formatDateString(row.trade_date),
     small: toCnyNet(row.buy_sm_amount, row.sell_sm_amount),
+    small_buy: toValue(row.buy_sm_amount),
     medium: toCnyNet(row.buy_md_amount, row.sell_md_amount),
+    medium_buy: toValue(row.buy_md_amount),
     large: toCnyNet(row.buy_lg_amount, row.sell_lg_amount),
+    large_buy: toValue(row.buy_lg_amount),
     extra_large: toCnyNet(row.buy_elg_amount, row.sell_elg_amount),
+    extra_large_buy: toValue(row.buy_elg_amount),
     change_pct: pctMap.has(row.trade_date) ? pctMap.get(row.trade_date) : null,
     turnover_rate: turnoverMap.has(row.trade_date) ? turnoverMap.get(row.trade_date) : null,
   }));
@@ -86,9 +90,13 @@ export function normalizeDailyFlow(rows) {
   return rows.map((row) => ({
     date: row.date,
     small: toMillion(row.small),
+    small_buy: toMillion(row.small_buy),
     medium: toMillion(row.medium),
+    medium_buy: toMillion(row.medium_buy),
     large: toMillion(row.large),
+    large_buy: toMillion(row.large_buy),
     extra_large: toMillion(row.extra_large),
+    extra_large_buy: toMillion(row.extra_large_buy),
     change_pct: row.change_pct,
     turnover_rate: row.turnover_rate,
     unit: 'million',
@@ -137,7 +145,7 @@ async function adaptiveThrottle() {
   // if (process.env.TUSHARE_SKIP_THROTTLE === '1') {
   //   return;
   // }
-  return
+ // return
   const now = Date.now();
   if (now - windowStart >= RATE_WINDOW_MS) {
     windowStart = now;
@@ -145,6 +153,13 @@ async function adaptiveThrottle() {
   }
 
   requestCount += 1;
+
+  if (requestCount >= 200) {
+    await sleep(1000*10);
+    windowStart = Date.now();
+    requestCount = 0;
+
+  }
 
   const remaining = RATE_LIMIT_PER_MIN - requestCount;
   if (remaining <= 0) {
@@ -180,6 +195,11 @@ function toCnyNet(buyAmount, sellAmount) {
   const sell = Number(sellAmount) || 0;
   // Tushare moneyflow uses 10k CNY (万元)
   return (buy - sell) * 10_000;
+}
+
+function toValue(amount) {
+  // Tushare moneyflow uses 10k CNY (万元)
+  return (Number(amount) || 0) * 10_000;
 }
 
 function toMillion(value) {

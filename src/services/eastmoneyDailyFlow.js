@@ -41,12 +41,24 @@ export async function fetchDailyFundFlow(code, days = 15) {
 
   return dates.map((date, i) => {
     const [small, medium, large, extraLarge] = flows[i];
-    return {
-      date,
+    const totalAmount = dailyMap.get(date)?.total_amount ?? null;
+    const buy = estimateBuyAmounts({
       small,
       medium,
       large,
+      extraLarge,
+      totalAmount,
+    });
+    return {
+      date,
+      small,
+      small_buy: buy.small_buy,
+      medium,
+      medium_buy: buy.medium_buy,
+      large,
+      large_buy: buy.large_buy,
       extra_large: extraLarge,
+      extra_large_buy: buy.extra_large_buy,
       change_pct: dailyMap.get(date)?.change_pct ?? null,
       turnover_rate: dailyMap.get(date)?.turnover_rate ?? null,
     };
@@ -62,9 +74,13 @@ export function normalizeDailyFlow(rows) {
   return rows.map((row) => ({
     date: row.date,
     small: toMillion(row.small),
+    small_buy: toMillion(row.small_buy),
     medium: toMillion(row.medium),
+    medium_buy: toMillion(row.medium_buy),
     large: toMillion(row.large),
+    large_buy: toMillion(row.large_buy),
     extra_large: toMillion(row.extra_large),
+    extra_large_buy: toMillion(row.extra_large_buy),
     change_pct: row.change_pct,
     turnover_rate: row.turnover_rate,
     unit: 'million',
@@ -130,10 +146,55 @@ async function fetchDailyMarketData({ secid, days }) {
     const parts = line.split(',');
     return {
       date: parts[0],
+      total_amount: Number(parts[6]),
       change_pct: Number(parts[8]),
       turnover_rate: Number(parts[10]),
     };
   });
+}
+
+function estimateBuyAmounts({ small, medium, large, extraLarge, totalAmount }) {
+  const nets = {
+    small: Number(small) || 0,
+    medium: Number(medium) || 0,
+    large: Number(large) || 0,
+    extra_large: Number(extraLarge) || 0,
+  };
+  const absSum =
+    Math.abs(nets.small) +
+    Math.abs(nets.medium) +
+    Math.abs(nets.large) +
+    Math.abs(nets.extra_large);
+  if (absSum <= 0) {
+    return {
+      small_buy: 0,
+      medium_buy: 0,
+      large_buy: 0,
+      extra_large_buy: 0,
+    };
+  }
+
+  const baseAmount = Number(totalAmount);
+  const hasAmount = Number.isFinite(baseAmount) && baseAmount > 0;
+
+  const smallTurnover = estimateTurnoverByNet(nets.small, absSum, baseAmount, hasAmount);
+  const mediumTurnover = estimateTurnoverByNet(nets.medium, absSum, baseAmount, hasAmount);
+  const largeTurnover = estimateTurnoverByNet(nets.large, absSum, baseAmount, hasAmount);
+  const extraLargeTurnover = estimateTurnoverByNet(nets.extra_large, absSum, baseAmount, hasAmount);
+
+  return {
+    small_buy: Math.max(0, (smallTurnover + nets.small) / 2),
+    medium_buy: Math.max(0, (mediumTurnover + nets.medium) / 2),
+    large_buy: Math.max(0, (largeTurnover + nets.large) / 2),
+    extra_large_buy: Math.max(0, (extraLargeTurnover + nets.extra_large) / 2),
+  };
+}
+
+function estimateTurnoverByNet(netValue, absSum, totalAmount, hasAmount) {
+  const absNet = Math.abs(netValue);
+  if (!hasAmount) return absNet;
+  const weighted = (totalAmount * absNet) / absSum;
+  return Math.max(absNet, weighted);
 }
 
 function normalizeSecId(code) {

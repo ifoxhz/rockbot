@@ -5,9 +5,12 @@ const DAILY_BASE_DIR = path.resolve('data/daily_fund_flow');
 const ANALYSIS_BASE_DIR = path.resolve('data/analysis');
 const DEFAULT_ANALYSIS_CONFIG = {
   minStreakDays: 5,
-  stddevMin: 1.618,
-  stddevMax: 2.618,
+  stddevMin: 4.618,
+  stddevMax: 5.618,
   minTurnover: 3.0,
+  buyRatioMultiplier: 1.618,
+  minBuyRatioWinningDaysFraction: 0.5,
+  extraLargeBuyTrendMinSlope: 0,
 };
 
 export function storeDailyFundFlow(code, dailyData, options = {}) {
@@ -20,7 +23,7 @@ export function storeDailyFundFlow(code, dailyData, options = {}) {
   const payload = {
     code,
     unit: 'million_cny',
-    source: 'eastmoney',
+    source: resolveSource(options.source, dailyData),
     algorithm_version: 'daily_fund_flow_v1',
     generated_at: new Date().toISOString(),
     download_date: date,
@@ -30,6 +33,19 @@ export function storeDailyFundFlow(code, dailyData, options = {}) {
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
 
   return filePath;
+}
+
+function resolveSource(explicitSource, dailyData) {
+  if (explicitSource && String(explicitSource).trim()) {
+    return String(explicitSource).trim().toLowerCase();
+  }
+  if (Array.isArray(dailyData) && dailyData.length > 0) {
+    const rowSource = dailyData[0]?.source;
+    if (rowSource && String(rowSource).trim()) {
+      return String(rowSource).trim().toLowerCase();
+    }
+  }
+  return 'unknown';
 }
 
 export function checkSmallNetBuyDays(code, minDays = 5, options = {}) {
@@ -171,13 +187,93 @@ export function averageTurnoverRateGreaterThan(minTurnoverRate) {
   };
 }
 
+// Hook / filter:
+// Count days where extra-large buy ratio > multiplier * small buy ratio.
+// Pass only when winning-day fraction is greater than minWinningFraction.
+export function extraLargeBuyRatioDominance(multiplier = 1.218, minWinningFraction = 0.5) {
+  return (ctx) => {
+    const rows = Array.isArray(ctx?.rows) ? ctx.rows : [];
+    let validDays = 0;
+    let winningDays = 0;
+
+    for (const row of rows) {
+      const smallBuy = Number(row.small_buy);
+      const mediumBuy = Number(row.medium_buy);
+      const largeBuy = Number(row.large_buy);
+      const extraLargeBuy = Number(row.extra_large_buy);
+
+      if (
+        !Number.isFinite(smallBuy) ||
+        !Number.isFinite(mediumBuy) ||
+        !Number.isFinite(largeBuy) ||
+        !Number.isFinite(extraLargeBuy)
+      ) {
+        continue;
+      }
+
+      const totalBuy = smallBuy + mediumBuy + largeBuy + extraLargeBuy;
+      if (totalBuy <= 0) continue;
+
+      validDays += 1;
+      const smallBuyRatio = smallBuy / totalBuy;
+      const extraLargeBuyRatio = extraLargeBuy / totalBuy;
+
+      if (extraLargeBuyRatio > multiplier * smallBuyRatio) {
+        winningDays += 1;
+      }
+    }
+
+    if (validDays === 0) return false;
+    return winningDays > validDays * minWinningFraction;
+  };
+}
+
+// Hook / filter:
+// Extra-large buy ratio must be in an upward trend across trading days.
+export function extraLargeBuyRatioUptrend(minSlope = 0) {
+  return (ctx) => {
+    const rows = Array.isArray(ctx?.rows) ? ctx.rows : [];
+    const ratios = [];
+
+    for (const row of rows) {
+      const smallBuy = Number(row.small_buy);
+      const mediumBuy = Number(row.medium_buy);
+      const largeBuy = Number(row.large_buy);
+      const extraLargeBuy = Number(row.extra_large_buy);
+      if (
+        !Number.isFinite(smallBuy) ||
+        !Number.isFinite(mediumBuy) ||
+        !Number.isFinite(largeBuy) ||
+        !Number.isFinite(extraLargeBuy)
+      ) {
+        continue;
+      }
+
+      const totalBuy = smallBuy + mediumBuy + largeBuy + extraLargeBuy;
+      if (totalBuy <= 0) continue;
+      ratios.push(extraLargeBuy / totalBuy);
+    }
+    
+    if (ratios.length < 3) return false;
+    const cur_slope = linearRegressionSlope(ratios)
+    // console.log(`Calculated slope for extra-large buy ratio: ${cur_slope.toFixed(4)}`);
+    // return  cur_slope > 0.0003 && cur_slope < Number(minSlope);
+    return cur_slope > Number(minSlope);
+  };
+}
+
 export function buildStockFilters(config = {}) {
   const resolved = resolveAnalysisConfig(config);
   return [
-    checkSmallNetBuyStreak(resolved.minStreakDays),
+    // checkSmallNetBuyStreak(resolved.minStreakDays),
     changePctStddev(resolved.stddevMin, resolved.stddevMax),
     risingDaysGreater(),
     averageTurnoverRateGreaterThan(resolved.minTurnover),
+    // extraLargeBuyRatioDominance(
+    //   resolved.buyRatioMultiplier,
+    //   resolved.minBuyRatioWinningDaysFraction
+    // ),
+    extraLargeBuyRatioUptrend(resolved.extraLargeBuyTrendMinSlope),
   ];
 }
 
@@ -187,6 +283,15 @@ export function resolveAnalysisConfig(overrides = {}) {
     stddevMin: toFiniteOrDefault(overrides.stddevMin, DEFAULT_ANALYSIS_CONFIG.stddevMin),
     stddevMax: toFiniteOrDefault(overrides.stddevMax, DEFAULT_ANALYSIS_CONFIG.stddevMax),
     minTurnover: toFiniteOrDefault(overrides.minTurnover, DEFAULT_ANALYSIS_CONFIG.minTurnover),
+    buyRatioMultiplier: toFiniteOrDefault(overrides.buyRatioMultiplier, DEFAULT_ANALYSIS_CONFIG.buyRatioMultiplier),
+    minBuyRatioWinningDaysFraction: toFiniteOrDefault(
+      overrides.minBuyRatioWinningDaysFraction,
+      DEFAULT_ANALYSIS_CONFIG.minBuyRatioWinningDaysFraction
+    ),
+    extraLargeBuyTrendMinSlope: toFiniteOrDefault(
+      overrides.extraLargeBuyTrendMinSlope,
+      DEFAULT_ANALYSIS_CONFIG.extraLargeBuyTrendMinSlope
+    ),
   };
 }
 
@@ -285,6 +390,29 @@ function calculateStddev(values) {
   const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
   const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
   return Number(Math.sqrt(variance).toFixed(4));
+}
+
+function linearRegressionSlope(values) {
+  const n = Array.isArray(values) ? values.length : 0;
+  if (n < 2) return NaN;
+
+  let sumX = 0;
+  let sumY = 0;
+  let sumXX = 0;
+  let sumXY = 0;
+  for (let i = 0; i < n; i++) {
+    const x = i;
+    const y = Number(values[i]);
+    if (!Number.isFinite(y)) return NaN;
+    sumX += x;
+    sumY += y;
+    sumXX += x * x;
+    sumXY += x * y;
+  }
+
+  const denominator = n * sumXX - sumX * sumX;
+  if (denominator === 0) return NaN;
+  return (n * sumXY - sumX * sumY) / denominator;
 }
 
 function toFiniteOrDefault(value, fallback) {

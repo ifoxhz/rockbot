@@ -1,16 +1,29 @@
 import { Command } from 'commander';
 import 'dotenv/config';
-import { fetchDailyFundFlow, normalizeDailyFlow } from '../services/tushareDailyFlow.js';
+import * as eastmoneyFlow from '../services/eastmoneyDailyFlow.js';
+import * as tushareFlow from '../services/tushareDailyFlow.js';
 import { storeDailyFundFlow, runStockAnalysis, storeDailyAnalysisFile, todayDate, getDefaultAnalysisConfig } from '../services/storeDailyFlow.js';
 import { sendMatchedEmail, buildMatchedEmail } from '../services/email.js';
 
 const DEFAULT_MIN_TURNOVER = getDefaultAnalysisConfig().minTurnover;
+const DEFAULT_SOURCE = (process.env.ROCK_DATA_SOURCE || 'eastmoney').toLowerCase();
+const DATA_SOURCE_MAP = {
+  eastmoney: eastmoneyFlow,
+  tushare: tushareFlow,
+};
 
 export const rockCommand = new Command('rock')
   .argument('<start>', 'start stock code or range like 600030-600040')
   .argument('[end]', 'end stock code')
+  .option('-s, --source <source>', 'data source: eastmoney|tushare', DEFAULT_SOURCE)
   .option('-m, --min-turnover <value>', 'minimum average turnover rate', String(DEFAULT_MIN_TURNOVER))
   .action(async (start, end, options) => {
+    const source = normalizeDataSource(options.source);
+    const adapter = DATA_SOURCE_MAP[source];
+    if (!adapter) {
+      throw new Error(`Invalid --source value: ${options.source}`);
+    }
+
     const minTurnover = Number(options.minTurnover);
     if (!Number.isFinite(minTurnover)) {
       throw new Error('Invalid --min-turnover value');
@@ -24,13 +37,13 @@ export const rockCommand = new Command('rock')
 
     for (const code of codes) {
       try {
-        const raw = await fetchDailyFundFlow(code);
-        const daily = normalizeDailyFlow(raw);
+        const raw = await adapter.fetchDailyFundFlow(code);
+        const daily = adapter.normalizeDailyFlow(raw);
         if (!Array.isArray(daily) || daily.length === 0) {
           // errors.push({ code, error: 'Empty daily fund flow data' });
           continue;
         }
-        storeDailyFundFlow(code, daily, { date: downloadDate });
+        storeDailyFundFlow(code, daily, { date: downloadDate, source });
 
         const check = runStockAnalysis(code, {
           date: downloadDate,
@@ -52,6 +65,7 @@ export const rockCommand = new Command('rock')
     storeDailyAnalysisFile(
       {
         source: 'download_run',
+        data_source: source,
         total: codes.length,
         matched_count: matched.length,
         matched_codes: matched,
@@ -89,7 +103,8 @@ export const rockCommand = new Command('rock')
           matched_count: matched.length,
           matched_codes: matched,
           download_date: downloadDate,
-          min_turnover: minTurnover
+          min_turnover: minTurnover,
+          data_source: source
         },
         null,
         2
@@ -140,4 +155,8 @@ function expandRange(start, end) {
     codes.push(String(i).padStart(width, '0'));
   }
   return codes;
+}
+
+function normalizeDataSource(source) {
+  return String(source || '').trim().toLowerCase();
 }
