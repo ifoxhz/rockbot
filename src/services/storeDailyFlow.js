@@ -5,8 +5,8 @@ const DAILY_BASE_DIR = path.resolve('data/daily_fund_flow');
 const ANALYSIS_BASE_DIR = path.resolve('data/analysis');
 const DEFAULT_ANALYSIS_CONFIG = {
   minStreakDays: 5,
-  stddevMin: 4.618,
-  stddevMax: 5.618,
+  stddevMin: 3.618,
+  stddevMax: 4.618,
   minTurnover: 3.0,
   buyRatioMultiplier: 1.618,
   minBuyRatioWinningDaysFraction: 0.5,
@@ -257,8 +257,8 @@ export function extraLargeBuyRatioUptrend(minSlope = 0) {
     if (ratios.length < 3) return false;
     const cur_slope = linearRegressionSlope(ratios)
     // console.log(`Calculated slope for extra-large buy ratio: ${cur_slope.toFixed(4)}`);
-    // return  cur_slope > 0.0003 && cur_slope < Number(minSlope);
-    return cur_slope > Number(minSlope);
+    return  cur_slope > 0.0003 && cur_slope < Number(0.002);
+    // return cur_slope > Number(minSlope);
   };
 }
 
@@ -267,7 +267,7 @@ export function buildStockFilters(config = {}) {
   return [
     // checkSmallNetBuyStreak(resolved.minStreakDays),
     changePctStddev(resolved.stddevMin, resolved.stddevMax),
-    risingDaysGreater(),
+    // risingDaysGreater(),
     averageTurnoverRateGreaterThan(resolved.minTurnover),
     // extraLargeBuyRatioDominance(
     //   resolved.buyRatioMultiplier,
