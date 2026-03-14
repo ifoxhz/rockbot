@@ -2,20 +2,22 @@ import { Command } from 'commander';
 import 'dotenv/config';
 import * as eastmoneyFlow from '../services/eastmoneyDailyFlow.js';
 import * as tushareFlow from '../services/tushareDailyFlow.js';
+import * as xueqiuFlow from '../services/xueqiuDailyFlow.js';
 import { storeDailyFundFlow, runStockAnalysis, storeDailyAnalysisFile, todayDate, getDefaultAnalysisConfig } from '../services/storeDailyFlow.js';
 import { sendMatchedEmail, buildMatchedEmail } from '../services/email.js';
 
 const DEFAULT_MIN_TURNOVER = getDefaultAnalysisConfig().minTurnover;
-const DEFAULT_SOURCE = (process.env.ROCK_DATA_SOURCE || 'eastmoney').toLowerCase();
+const DEFAULT_SOURCE = (process.env.ROCK_DATA_SOURCE || 'xueqiu').toLowerCase();
 const DATA_SOURCE_MAP = {
   eastmoney: eastmoneyFlow,
   tushare: tushareFlow,
+  xueqiu: xueqiuFlow,
 };
 
 export const rockCommand = new Command('rock')
   .argument('<start>', 'start stock code or range like 600030-600040')
   .argument('[end]', 'end stock code')
-  .option('-s, --source <source>', 'data source: eastmoney|tushare', DEFAULT_SOURCE)
+  .option('-s, --source <source>', 'data source: xueqiu|eastmoney|tushare', DEFAULT_SOURCE)
   .option('-m, --min-turnover <value>', 'minimum average turnover rate', String(DEFAULT_MIN_TURNOVER))
   .action(async (start, end, options) => {
     const source = normalizeDataSource(options.source);

@@ -256,9 +256,9 @@ export function extraLargeBuyRatioUptrend(minSlope = 0) {
     
     if (ratios.length < 3) return false;
     const cur_slope = linearRegressionSlope(ratios)
-    // console.log(`Calculated slope for extra-large buy ratio: ${cur_slope.toFixed(4)}`);
-    return  cur_slope > 0.0003 && cur_slope < Number(0.002);
-    // return cur_slope > Number(minSlope);
+    console.log(`Calculated slope for extra-large buy ratio: ${cur_slope.toFixed(4)}`);
+    // return  cur_slope > 0.0005 && cur_slope < Number(0.005);
+    return cur_slope > Number(0.005);
   };
 }
 
@@ -268,7 +268,7 @@ export function buildStockFilters(config = {}) {
     // checkSmallNetBuyStreak(resolved.minStreakDays),
     changePctStddev(resolved.stddevMin, resolved.stddevMax),
     // risingDaysGreater(),
-    averageTurnoverRateGreaterThan(resolved.minTurnover),
+    // averageTurnoverRateGreaterThan(resolved.minTurnover),
     // extraLargeBuyRatioDominance(
     //   resolved.buyRatioMultiplier,
     //   resolved.minBuyRatioWinningDaysFraction

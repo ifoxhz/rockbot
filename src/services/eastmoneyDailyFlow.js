@@ -49,16 +49,27 @@ export async function fetchDailyFundFlow(code, days = 15) {
       extraLarge,
       totalAmount,
     });
+    const sell = estimateSellAmounts({
+      small,
+      medium,
+      large,
+      extraLarge,
+      totalAmount,
+    });
     return {
       date,
       small,
       small_buy: buy.small_buy,
+      small_sell: sell.small_sell,
       medium,
       medium_buy: buy.medium_buy,
+      medium_sell: sell.medium_sell,
       large,
       large_buy: buy.large_buy,
+      large_sell: sell.large_sell,
       extra_large: extraLarge,
       extra_large_buy: buy.extra_large_buy,
+      extra_large_sell: sell.extra_large_sell,
       change_pct: dailyMap.get(date)?.change_pct ?? null,
       turnover_rate: dailyMap.get(date)?.turnover_rate ?? null,
     };
@@ -75,12 +86,16 @@ export function normalizeDailyFlow(rows) {
     date: row.date,
     small: toMillion(row.small),
     small_buy: toMillion(row.small_buy),
+    small_sell: toMillion(row.small_sell),
     medium: toMillion(row.medium),
     medium_buy: toMillion(row.medium_buy),
+    medium_sell: toMillion(row.medium_sell),
     large: toMillion(row.large),
     large_buy: toMillion(row.large_buy),
+    large_sell: toMillion(row.large_sell),
     extra_large: toMillion(row.extra_large),
     extra_large_buy: toMillion(row.extra_large_buy),
+    extra_large_sell: toMillion(row.extra_large_sell),
     change_pct: row.change_pct,
     turnover_rate: row.turnover_rate,
     unit: 'million',
@@ -187,6 +202,43 @@ function estimateBuyAmounts({ small, medium, large, extraLarge, totalAmount }) {
     medium_buy: Math.max(0, (mediumTurnover + nets.medium) / 2),
     large_buy: Math.max(0, (largeTurnover + nets.large) / 2),
     extra_large_buy: Math.max(0, (extraLargeTurnover + nets.extra_large) / 2),
+  };
+}
+
+function estimateSellAmounts({ small, medium, large, extraLarge, totalAmount }) {
+  const nets = {
+    small: Number(small) || 0,
+    medium: Number(medium) || 0,
+    large: Number(large) || 0,
+    extra_large: Number(extraLarge) || 0,
+  };
+  const absSum =
+    Math.abs(nets.small) +
+    Math.abs(nets.medium) +
+    Math.abs(nets.large) +
+    Math.abs(nets.extra_large);
+  if (absSum <= 0) {
+    return {
+      small_sell: 0,
+      medium_sell: 0,
+      large_sell: 0,
+      extra_large_sell: 0,
+    };
+  }
+
+  const baseAmount = Number(totalAmount);
+  const hasAmount = Number.isFinite(baseAmount) && baseAmount > 0;
+
+  const smallTurnover = estimateTurnoverByNet(nets.small, absSum, baseAmount, hasAmount);
+  const mediumTurnover = estimateTurnoverByNet(nets.medium, absSum, baseAmount, hasAmount);
+  const largeTurnover = estimateTurnoverByNet(nets.large, absSum, baseAmount, hasAmount);
+  const extraLargeTurnover = estimateTurnoverByNet(nets.extra_large, absSum, baseAmount, hasAmount);
+
+  return {
+    small_sell: Math.max(0, (smallTurnover - nets.small) / 2),
+    medium_sell: Math.max(0, (mediumTurnover - nets.medium) / 2),
+    large_sell: Math.max(0, (largeTurnover - nets.large) / 2),
+    extra_large_sell: Math.max(0, (extraLargeTurnover - nets.extra_large) / 2),
   };
 }
 

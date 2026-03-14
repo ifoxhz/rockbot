@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { rockCommand } from '../src/commands/rock.js';
 import { showCommand } from '../src/commands/show.js';
 import { reanalyzeCommand } from '../src/commands/reanalyze.js';
+import { showlineCommand } from '../src/commands/showline.js';
 
 const program = new Command();
 
@@ -13,6 +14,7 @@ program
 
 program.addCommand(rockCommand);
 program.addCommand(showCommand);
+program.addCommand(showlineCommand);
 program.addCommand(reanalyzeCommand);
 
 program.parse(process.argv);

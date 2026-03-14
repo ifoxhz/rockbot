@@ -15,10 +15,10 @@ export const showCommand = new Command('show')
 
       const table = rows.map((row) => ({
         date: row.date,
-        small: row.small,
-        medium: row.medium,
-        large: row.large,
-        extra_large: row.extra_large,
+        small_s: calculateSellPercentage(row.small_sell, row.medium_sell, row.large_sell, row.extra_large_sell, 'small'),
+        medium_s: calculateSellPercentage(row.small_sell, row.medium_sell, row.large_sell, row.extra_large_sell, 'medium'),
+        large_s: calculateSellPercentage(row.small_sell, row.medium_sell, row.large_sell, row.extra_large_sell, 'large'),
+        extra_large_s: calculateSellPercentage(row.small_sell, row.medium_sell, row.large_sell, row.extra_large_sell, 'extra_large'),
         small_b: calculateBuyPercentage(row.small_buy, row.medium_buy, row.large_buy, row.extra_large_buy, 'small'),
         medium_b: calculateBuyPercentage(row.small_buy, row.medium_buy, row.large_buy, row.extra_large_buy, 'medium'),
         large_b: calculateBuyPercentage(row.small_buy, row.medium_buy, row.large_buy, row.extra_large_buy, 'large'),
@@ -33,6 +33,25 @@ export const showCommand = new Command('show')
       process.exitCode = 1;
     }
   });
+
+function calculateSellPercentage(smallSell, mediumSell, largeSell, extraLargeSell, size) {
+  const small = Number(smallSell) || 0;
+  const medium = Number(mediumSell) || 0;
+  const large = Number(largeSell) || 0;
+  const extraLarge = Number(extraLargeSell) || 0;
+  const total = small + medium + large + extraLarge;
+
+  if (total === 0) return '0.00%';
+
+  let value = 0;
+  if (size === 'small') value = small;
+  else if (size === 'medium') value = medium;
+  else if (size === 'large') value = large;
+  else if (size === 'extra_large') value = extraLarge;
+
+  const percentage = (value / total) * 100;
+  return `${percentage.toFixed(2)}%`;
+}
 
 function calculateBuyPercentage(smallBuy, mediumBuy, largeBuy, extraLargeBuy, size) {
   const small = Number(smallBuy) || 0;
