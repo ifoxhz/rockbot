@@ -7,7 +7,7 @@ import { storeDailyFundFlow, runStockAnalysis, storeDailyAnalysisFile, todayDate
 import { sendMatchedEmail, buildMatchedEmail } from '../services/email.js';
 
 const DEFAULT_MIN_TURNOVER = getDefaultAnalysisConfig().minTurnover;
-const DEFAULT_SOURCE = (process.env.ROCK_DATA_SOURCE || 'xueqiu').toLowerCase();
+const DEFAULT_SOURCE = (process.env.ROCK_DATA_SOURCE || 'tushare').toLowerCase();
 const DATA_SOURCE_MAP = {
   eastmoney: eastmoneyFlow,
   tushare: tushareFlow,

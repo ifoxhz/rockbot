@@ -15,6 +15,7 @@
   "license": "ISC",
   "dependencies": {
     "asciichart": "^1.5.25",
+    "chart.js": "^4.5.1",
     "chartjs-node-canvas": "^5.0.0",
     "commander": "^14.0.3",
     "dotenv": "^17.3.1",

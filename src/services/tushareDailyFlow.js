@@ -12,7 +12,7 @@ let requestCount = 0;
  * @param {string} code e.g. "600519"
  * @param {number} days default 15
  */
-export async function fetchDailyFundFlow(code, days = 15) {
+export async function fetchDailyFundFlow(code, days = 25) {
   const token = process.env.TUSHARE_TOKEN;
   if (!token) {
     throw new Error('TUSHARE_TOKEN is required to fetch Tushare data');

@@ -5,12 +5,13 @@ const DAILY_BASE_DIR = path.resolve('data/daily_fund_flow');
 const ANALYSIS_BASE_DIR = path.resolve('data/analysis');
 const DEFAULT_ANALYSIS_CONFIG = {
   minStreakDays: 5,
-  stddevMin: 3.618,
-  stddevMax: 4.618,
-  minTurnover: 3.0,
+  stddevMin: 1.618,
+  stddevMax: 2.618,
+  minTurnover: 4.0,
   buyRatioMultiplier: 1.618,
   minBuyRatioWinningDaysFraction: 0.5,
   extraLargeBuyTrendMinSlope: 0,
+  turnoverRateTrendMinSlope: 0.01,
 };
 
 export function storeDailyFundFlow(code, dailyData, options = {}) {
@@ -183,7 +184,8 @@ export function averageTurnoverRateGreaterThan(minTurnoverRate) {
     if (values.length === 0) return false;
 
     const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
-    return avg > Number(minTurnoverRate);
+    // return avg > Number(minTurnoverRate);
+    return avg > Number(3) && avg < Number(6);
   };
 }
 
@@ -257,8 +259,59 @@ export function extraLargeBuyRatioUptrend(minSlope = 0) {
     if (ratios.length < 3) return false;
     const cur_slope = linearRegressionSlope(ratios)
     console.log(`Calculated slope for extra-large buy ratio: ${cur_slope.toFixed(4)}`);
-    // return  cur_slope > 0.0005 && cur_slope < Number(0.005);
-    return cur_slope > Number(0.005);
+    // return  cur_slope > 0.001 && cur_slope < Number(0.0015);
+    return cur_slope < Number(minSlope);
+  };
+}
+
+// Hook / filter:
+// Extra-large sell ratio must be in an upward trend across trading days.
+export function extraLargeSellRatioUptrend(minSlope = 0) {
+  return (ctx) => {
+    const rows = Array.isArray(ctx?.rows) ? ctx.rows : [];
+    const ratios = [];
+
+    for (const row of rows) {
+      const smallSell = Number(row.small_sell);
+      const mediumSell = Number(row.medium_sell);
+      const largeSell = Number(row.large_sell);
+      const extraLargeSell = Number(row.extra_large_sell);
+      if (
+        !Number.isFinite(smallSell) ||
+        !Number.isFinite(mediumSell) ||
+        !Number.isFinite(largeSell) ||
+        !Number.isFinite(extraLargeSell)
+      ) {
+        continue;
+      }
+
+      const totalSell = smallSell + mediumSell + largeSell + extraLargeSell;
+      if (totalSell <= 0) continue;
+      ratios.push(extraLargeSell / totalSell);
+    }
+
+    if (ratios.length < 3) return false;
+    const cur_slope = linearRegressionSlope(ratios);
+    // console.log(`Calculated slope for extra-large sell ratio: ${cur_slope.toFixed(4)}`);
+    return cur_slope < Number(minSlope);
+    // return cur_slope > Number(-0.01) && cur_slope < Number(-0.005);
+  };
+}
+
+// Hook / filter:
+// Turnover rate must be in an upward trend across trading days.
+// Uses linear regression slope on turnover_rate series.
+export function turnoverRateUptrend(minSlope = 0) {
+  return (ctx) => {
+    const rows = Array.isArray(ctx?.rows) ? ctx.rows : [];
+    const values = rows
+      .map((row) => Number(row.turnover_rate))
+      .filter((v) => Number.isFinite(v));
+
+    if (values.length < 3) return false;
+    const cur_slope = linearRegressionSlope(values);
+    // console.log("turnoverRateUptrend: ", cur_slope)
+    return cur_slope > Number(minSlope);
   };
 }
 
@@ -266,14 +319,16 @@ export function buildStockFilters(config = {}) {
   const resolved = resolveAnalysisConfig(config);
   return [
     // checkSmallNetBuyStreak(resolved.minStreakDays),
-    changePctStddev(resolved.stddevMin, resolved.stddevMax),
+    changePctStddev(2.0, 3.0),
     // risingDaysGreater(),
-    // averageTurnoverRateGreaterThan(resolved.minTurnover),
+    averageTurnoverRateGreaterThan(5),
     // extraLargeBuyRatioDominance(
     //   resolved.buyRatioMultiplier,
     //   resolved.minBuyRatioWinningDaysFraction
     // ),
-    extraLargeBuyRatioUptrend(resolved.extraLargeBuyTrendMinSlope),
+    // extraLargeBuyRatioUptrend(0.001),
+    // extraLargeSellRatioUptrend(0.000),
+    turnoverRateUptrend(0.2),
   ];
 }
 
@@ -291,6 +346,10 @@ export function resolveAnalysisConfig(overrides = {}) {
     extraLargeBuyTrendMinSlope: toFiniteOrDefault(
       overrides.extraLargeBuyTrendMinSlope,
       DEFAULT_ANALYSIS_CONFIG.extraLargeBuyTrendMinSlope
+    ),
+    turnoverRateTrendMinSlope: toFiniteOrDefault(
+      overrides.turnoverRateTrendMinSlope,
+      DEFAULT_ANALYSIS_CONFIG.turnoverRateTrendMinSlope
     ),
   };
 }

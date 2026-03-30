@@ -10,7 +10,7 @@ const EASTMONEY_KLINE_URL =
  * @param {string} code e.g. "600519"
  * @param {number} days default 30
  */
-export async function fetchDailyFundFlow(code, days = 15) {
+export async function fetchDailyFundFlow(code, days = 25) {
   const secid = normalizeSecId(code);
 
   // dates
