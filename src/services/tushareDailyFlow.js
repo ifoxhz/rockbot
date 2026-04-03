@@ -38,29 +38,10 @@ export async function fetchDailyFundFlow(code, days = 25) {
     'sell_elg_amount',
   ]);
 
-  const dailyRows = await tushareRequest(token, 'daily', {
-    ts_code,
-    start_date: startDate,
-    end_date: endDate,
-  }, [
-    'trade_date',
-    'pct_chg',
-  ]);
-
-  const dailyBasicRows = await tushareRequest(token, 'daily_basic', {
-    ts_code,
-    start_date: startDate,
-    end_date: endDate,
-  }, [
-    'trade_date',
-    'turnover_rate',
-  ]);
-
-  const pctMap = new Map(
-    dailyRows.map((row) => [row.trade_date, row.pct_chg])
-  );
+  const marketRows = await fetchDailyMarketData(code, days);
+  const pctMap = new Map(marketRows.map((row) => [toTradeDate(row.date), row.change_pct]));
   const turnoverMap = new Map(
-    dailyBasicRows.map((row) => [row.trade_date, row.turnover_rate])
+    marketRows.map((row) => [toTradeDate(row.date), row.turnover_rate])
   );
 
   const mapped = moneyflowRows.map((row) => ({
@@ -83,6 +64,63 @@ export async function fetchDailyFundFlow(code, days = 25) {
 
   mapped.sort((a, b) => a.date.localeCompare(b.date));
   return mapped.slice(-days);
+}
+
+export async function fetchDailyMarketData(code, days = 25) {
+  const token = process.env.TUSHARE_TOKEN;
+  if (!token) {
+    throw new Error('TUSHARE_TOKEN is required to fetch Tushare data');
+  }
+
+  const ts_code = normalizeTsCode(code);
+  const endDate = formatDate(new Date());
+  const startDate = formatDate(addDays(new Date(), -days * 2));
+
+  const dailyRows = await tushareRequest(token, 'daily', {
+    ts_code,
+    start_date: startDate,
+    end_date: endDate,
+  }, [
+    'trade_date',
+    'pct_chg',
+  ]);
+
+  const dailyBasicRows = await tushareRequest(token, 'daily_basic', {
+    ts_code,
+    start_date: startDate,
+    end_date: endDate,
+  }, [
+    'trade_date',
+    'turnover_rate',
+  ]);
+
+  const marketMap = new Map();
+
+  for (const row of dailyRows) {
+    const date = formatDateString(row.trade_date);
+    marketMap.set(date, {
+      date,
+      change_pct: toFiniteOrNull(row.pct_chg),
+      turnover_rate: null,
+      source: 'tushare',
+    });
+  }
+
+  for (const row of dailyBasicRows) {
+    const date = formatDateString(row.trade_date);
+    const existing = marketMap.get(date) || {
+      date,
+      change_pct: null,
+      turnover_rate: null,
+      source: 'tushare',
+    };
+    existing.turnover_rate = toFiniteOrNull(row.turnover_rate);
+    marketMap.set(date, existing);
+  }
+
+  return [...marketMap.values()]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-days);
 }
 
 /**
@@ -231,4 +269,13 @@ function formatDateString(yyyymmdd) {
   if (!yyyymmdd || String(yyyymmdd).length !== 8) return String(yyyymmdd);
   const s = String(yyyymmdd);
   return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+}
+
+function toTradeDate(date) {
+  return String(date || '').replaceAll('-', '');
+}
+
+function toFiniteOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }

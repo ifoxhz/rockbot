@@ -5,6 +5,7 @@ const DAILY_BASE_DIR = path.resolve('data/daily_fund_flow');
 const ANALYSIS_BASE_DIR = path.resolve('data/analysis');
 const DEFAULT_ANALYSIS_CONFIG = {
   minStreakDays: 5,
+  extraLargeMinStreakDays: 0,
   stddevMin: 1.618,
   stddevMax: 2.618,
   minTurnover: 4.0,
@@ -105,6 +106,22 @@ export function runStockAnalysis(code, options = {}) {
 
 // Hook / filter: returns a function that checks streak with row-level filters
 export function checkSmallNetBuyStreak(minDays = 5, rowFilters = defaultRowFilters()) {
+  return createNetBuyStreakFilter('small', minDays, rowFilters, 'max_small_net_buy_streak');
+}
+
+export function checkExtraLargeNetBuyStreak(
+  minDays = 5,
+  rowFilters = defaultRowFiltersForField('extra_large')
+) {
+  return createNetBuyStreakFilter(
+    'extra_large',
+    minDays,
+    rowFilters,
+    'max_extra_large_net_buy_streak'
+  );
+}
+
+function createNetBuyStreakFilter(field, minDays, rowFilters, outputKey) {
   return (ctx) => {
     const rows = Array.isArray(ctx?.rows) ? ctx.rows : [];
     const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date));
@@ -137,7 +154,8 @@ export function checkSmallNetBuyStreak(minDays = 5, rowFilters = defaultRowFilte
     return {
       pass: maxStreak >= minDays,
       output: {
-        max_streak: maxStreak,
+        ...(outputKey === 'max_small_net_buy_streak' ? { max_streak: maxStreak } : {}),
+        [outputKey]: maxStreak,
         min_days: minDays
       }
     };
@@ -184,8 +202,7 @@ export function averageTurnoverRateGreaterThan(minTurnoverRate) {
     if (values.length === 0) return false;
 
     const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
-    // return avg > Number(minTurnoverRate);
-    return avg > Number(3) && avg < Number(6);
+    return avg > Number(minTurnoverRate);
   };
 }
 
@@ -257,10 +274,8 @@ export function extraLargeBuyRatioUptrend(minSlope = 0) {
     }
     
     if (ratios.length < 3) return false;
-    const cur_slope = linearRegressionSlope(ratios)
-    console.log(`Calculated slope for extra-large buy ratio: ${cur_slope.toFixed(4)}`);
-    // return  cur_slope > 0.001 && cur_slope < Number(0.0015);
-    return cur_slope < Number(minSlope);
+    const cur_slope = linearRegressionSlope(ratios);
+    return cur_slope > Number(minSlope);
   };
 }
 
@@ -318,23 +333,28 @@ export function turnoverRateUptrend(minSlope = 0) {
 export function buildStockFilters(config = {}) {
   const resolved = resolveAnalysisConfig(config);
   return [
-    // checkSmallNetBuyStreak(resolved.minStreakDays),
-    changePctStddev(2.0, 3.0),
+    checkSmallNetBuyStreak(resolved.minStreakDays),
+    changePctStddev(resolved.stddevMin, resolved.stddevMax),
     // risingDaysGreater(),
-    averageTurnoverRateGreaterThan(5),
+    averageTurnoverRateGreaterThan(resolved.minTurnover),
     // extraLargeBuyRatioDominance(
     //   resolved.buyRatioMultiplier,
     //   resolved.minBuyRatioWinningDaysFraction
     // ),
-    // extraLargeBuyRatioUptrend(0.001),
-    // extraLargeSellRatioUptrend(0.000),
-    turnoverRateUptrend(0.2),
+    // extraLargeBuyRatioUptrend(resolved.extraLargeBuyTrendMinSlope),
+    // extraLargeSellRatioUptrend(0),
+    turnoverRateUptrend(resolved.turnoverRateTrendMinSlope),
+    // checkExtraLargeNetBuyStreak(resolved.extraLargeMinStreakDays || resolved.minStreakDays),
   ];
 }
 
 export function resolveAnalysisConfig(overrides = {}) {
   return {
     minStreakDays: toFiniteOrDefault(overrides.minStreakDays, DEFAULT_ANALYSIS_CONFIG.minStreakDays),
+    extraLargeMinStreakDays: toFiniteOrDefault(
+      overrides.extraLargeMinStreakDays,
+      DEFAULT_ANALYSIS_CONFIG.extraLargeMinStreakDays
+    ),
     stddevMin: toFiniteOrDefault(overrides.stddevMin, DEFAULT_ANALYSIS_CONFIG.stddevMin),
     stddevMax: toFiniteOrDefault(overrides.stddevMax, DEFAULT_ANALYSIS_CONFIG.stddevMax),
     minTurnover: toFiniteOrDefault(overrides.minTurnover, DEFAULT_ANALYSIS_CONFIG.minTurnover),
@@ -359,8 +379,12 @@ export function getDefaultAnalysisConfig() {
 }
 
 export function defaultRowFilters() {
+  return defaultRowFiltersForField('small');
+}
+
+function defaultRowFiltersForField(field) {
   return [
-    (row) => Number(row.small) > 0,
+    (row) => Number(row?.[field]) > 0,
     (row) => row.change_pct != null && !isNaN(Number(row.change_pct)),
   ];
 }

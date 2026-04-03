@@ -8,7 +8,15 @@
     "rockbot": "bin/cli.js"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "check:undici": "node scripts/check-undici.mjs",
+    "probe:eastmoney": "node scripts/probe-eastmoney.mjs",
+    "probe:eastmoney:kline": "node scripts/probe-eastmoney-kline.mjs",
+    "probe:eastmoney:kline:browser": "node scripts/probe-eastmoney-kline-browser.mjs",
+    "capture:eastmoney:page": "node scripts/capture-eastmoney-page-requests.mjs",
+    "probe:eastmoney:fflow:raw": "node scripts/probe-eastmoney-fflow-raw.mjs",
+    "scan:eastmoney:fflow:fields": "node scripts/scan-eastmoney-fflow-fields.mjs",
+    "check:eastmoney:fflow:balance": "node scripts/check-eastmoney-fflow-balance.mjs"
   },
   "keywords": [],
   "author": "",
@@ -20,6 +28,10 @@
     "commander": "^14.0.3",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "undici": "^7.24.7"
+  },
+  "devDependencies": {
+    "playwright": "^1.59.1"
   }
 }

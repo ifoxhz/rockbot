@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import '../src/bootstrap-env.js';
 import { Command } from 'commander';
 import { rockCommand } from '../src/commands/rock.js';
 import { showCommand } from '../src/commands/show.js';

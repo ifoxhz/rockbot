@@ -1,9 +1,6 @@
 // src/services/xueqiuMoneyflow.js
 
 import fetch from "node-fetch";
-import dotenv from "dotenv";
-
-dotenv.config();
 
 const BASE = "https://stock.xueqiu.com";
 
@@ -149,6 +146,29 @@ export async function fetchDailyFundFlow(code, days = 15) {
   }));
 }
 
+export function normalizeDailyFlow(rows) {
+  return rows.map((row) => ({
+    date: row.date,
+    small: toMillion(row.small),
+    small_buy: toMillion(row.small_buy),
+    small_sell: toMillion(row.small_sell),
+    medium: toMillion(row.medium),
+    medium_buy: toMillion(row.medium_buy),
+    medium_sell: toMillion(row.medium_sell),
+    large: toMillion(row.large),
+    large_buy: toMillion(row.large_buy),
+    large_sell: toMillion(row.large_sell),
+    extra_large: toMillion(row.extra_large),
+    extra_large_buy: toMillion(row.extra_large_buy),
+    extra_large_sell: toMillion(row.extra_large_sell),
+    change_pct: row.change_pct,
+    turnover_rate: row.turnover_rate,
+    unit: "million",
+    currency: "CNY",
+    source: "xueqiu",
+  }));
+}
+
 /**
  * 调试函数
  */
@@ -160,4 +180,8 @@ export async function debugFetch(code) {
     "Processed:",
     JSON.stringify(data, null, 2)
   );
+}
+
+function toMillion(value) {
+  return Number(((Number(value) || 0) / 1_000_000).toFixed(3));
 }
