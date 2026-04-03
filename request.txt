@@ -1,0 +1,10 @@
+ 现在目标很清晰了:
+1. 把获取的数据都写入原始记录里面，每日涨跌幅和换手率用tushare获取，它很稳定，
+2. showline-html的趋势线，换成超大单的净额，和小单的净额，把超大单买入，和卖出的趋势线去掉；
+3. 在文件storeDailyFlow.js 加入一个类似 checkSmallNetBuyStreak的过滤函数， checkSmallNetBuyStreak是过滤小单，你加入超级大单的；
+4.  以后默认数据源就用eastmoney,
+5.  IP轮询那个我建议是保留，免得被某一个服务器拒绝；
+6.  很多debug信息，去掉，保留有价值的；
+7. undici这个http2单连接复用我建议保留
+8. 你对我的建议，如果觉得不合理，提出异议讨论
+
