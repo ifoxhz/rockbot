@@ -38,10 +38,17 @@
 // `undici`, then global fetch — no static import so startup never hard-fails.
 
 import net from 'node:net';
-import { fetchDailyMarketData as fetchTushareDailyMarketData } from './tushareDailyFlow.js';
+import vm from 'node:vm';
+import {
+  fetchEastmoneyDailyKlinesViaBrowser,
+  fetchEastmoneyRealtimeQuoteViaBrowser,
+} from './eastmoneyBrowserClient.js';
 
 const EASTMONEY_FLOW_URL =
   'https://push2his.eastmoney.com/api/qt/stock/fflow/kline/get';
+const EASTMONEY_KLINE_URL =
+  'https://push2his.eastmoney.com/api/qt/stock/kline/get';
+const EASTMONEY_DEFAULT_UT = 'fa5fd1943c7b386f172d6893dbfba10b';
 const EASTMONEY_FETCH_RETRIES = Math.max(
   1,
   Number.parseInt(String(process.env.EASTMONEY_FETCH_RETRIES || '4'), 10) || 4
@@ -118,6 +125,7 @@ let eastmoneyDynamicDelayMs = 0;
 
 let eastmoneyAgent = null;
 let eastmoneyAgentMode = null;
+let eastmoneyScriptAgent = null;
 /** @type {Map<string, unknown>} */
 let eastmoneyIpAgents = new Map();
 /** @type {Promise<import('undici') | null>} */
@@ -315,11 +323,16 @@ export async function fetchDailyFundFlow(code, days = 25) {
     secid,
     days,
   });
-  const marketRows = await fetchTushareDailyMarketData(code, days);
+  const marketRows = await fetchDailyMarketData({
+    secid,
+    days,
+  });
   const dailyMap = new Map(marketRows.map((row) => [row.date, row]));
 
   return flowRows.map((row) => {
-    const totalAmount = estimateTotalAmountFromNetFlows(row);
+    const marketRow = dailyMap.get(row.date) || null;
+    const totalAmount = marketRow?.total_amount ?? estimateTotalAmountFromNetFlows(row);
+    const totalAmountSource = marketRow?.total_amount != null ? 'eastmoney_kline' : 'estimated_from_flow';
     const buy = estimateBuyAmounts({
       small: row.small,
       medium: row.medium,
@@ -339,6 +352,14 @@ export async function fetchDailyFundFlow(code, days = 25) {
       main_net: row.main_net,
       main_net_ratio: row.main_net_ratio,
       small_net_ratio: row.small_net_ratio,
+      open: dailyMap.get(row.date)?.open ?? null,
+      close: dailyMap.get(row.date)?.close ?? null,
+      high: dailyMap.get(row.date)?.high ?? null,
+      low: dailyMap.get(row.date)?.low ?? null,
+      volume: dailyMap.get(row.date)?.volume ?? null,
+      total_amount: totalAmount,
+      total_amount_source: totalAmountSource,
+      amplitude: dailyMap.get(row.date)?.amplitude ?? null,
       small: row.small,
       small_buy: buy.small_buy,
       small_sell: sell.small_sell,
@@ -352,8 +373,9 @@ export async function fetchDailyFundFlow(code, days = 25) {
       extra_large_buy: buy.extra_large_buy,
       extra_large_sell: sell.extra_large_sell,
       change_pct: dailyMap.get(row.date)?.change_pct ?? null,
+      change_amount: dailyMap.get(row.date)?.change_amount ?? null,
       turnover_rate: dailyMap.get(row.date)?.turnover_rate ?? null,
-      market_data_source: dailyMap.get(row.date)?.source || 'tushare',
+      market_data_source: marketRow?.source || null,
     };
   });
 }
@@ -410,6 +432,14 @@ export function normalizeDailyFlow(rows) {
     main_net: toMillion(row.main_net),
     main_net_ratio: row.main_net_ratio,
     small_net_ratio: row.small_net_ratio,
+    open: row.open,
+    close: row.close,
+    high: row.high,
+    low: row.low,
+    volume: row.volume,
+    total_amount: toMillion(row.total_amount),
+    total_amount_source: row.total_amount_source || null,
+    amplitude: row.amplitude,
     small: toMillion(row.small),
     small_buy: toMillion(row.small_buy),
     small_sell: toMillion(row.small_sell),
@@ -423,8 +453,9 @@ export function normalizeDailyFlow(rows) {
     extra_large_buy: toMillion(row.extra_large_buy),
     extra_large_sell: toMillion(row.extra_large_sell),
     change_pct: row.change_pct,
+    change_amount: row.change_amount,
     turnover_rate: row.turnover_rate,
-    market_data_source: row.market_data_source || 'tushare',
+    market_data_source: row.market_data_source || null,
     unit: 'million',
     currency: 'CNY',
     source: 'eastmoney',
@@ -440,21 +471,51 @@ async function fetchKlines(args) {
 }
 
 async function fetchFlowRows(args) {
-  const rows = await fetchKlines({
-    ...args,
-    fields2: 'f51,f52,f53,f54,f55,f56,f57,f58',
-  });
+  try {
+    const rows = await fetchKlines({
+      ...args,
+      fields2: 'f51,f52,f53,f54,f55,f56,f57,f58',
+    });
 
-  return rows.map((parts) => ({
-    date: parts[0],
-    main_net: parts[1],
-    small: parts[2],
-    medium: parts[3],
-    large: parts[4],
-    extra_large: parts[5],
-    main_net_ratio: parts[6],
-    small_net_ratio: parts[7],
-  }));
+    return rows.map((parts) => ({
+      date: parts[0],
+      main_net: parts[1],
+      small: parts[2],
+      medium: parts[3],
+      large: parts[4],
+      extra_large: parts[5],
+      main_net_ratio: parts[6],
+      small_net_ratio: parts[7],
+    }));
+  } catch (err) {
+    logEastmoneyError('fetchFlowRows extended fields failed, falling back to base fields', {
+      secid: args?.secid,
+      days: args?.days,
+      message: err?.message,
+    });
+    const dates = await fetchKlines({
+      ...args,
+      fields2: 'f51',
+    });
+    const rows = await fetchKlines({
+      ...args,
+      fields2: 'f53,f54,f55,f56',
+    });
+
+    return dates.map((date, index) => {
+      const [small, medium, large, extraLarge] = rows[index] || [0, 0, 0, 0];
+      return {
+        date,
+        main_net: Number(large || 0) + Number(extraLarge || 0),
+        small,
+        medium,
+        large,
+        extra_large: extraLarge,
+        main_net_ratio: null,
+        small_net_ratio: null,
+      };
+    });
+  }
 }
 
 async function fetchKlinesUncached({ secid, days, fields2 }) {
@@ -521,6 +582,118 @@ async function fetchKlinesUncached({ secid, days, fields2 }) {
     }
     return parts.map(Number);
   });
+}
+
+async function fetchDailyMarketData(args) {
+  const { secid, days } = args;
+  const key = cacheKeyDaily(secid, days);
+  return getOrFetchCached(key, () => fetchDailyMarketDataUncached(args));
+}
+
+async function fetchDailyMarketDataUncached({ secid, days }) {
+  return fetchDailyMarketDataViaBrowser({ secid, days });
+}
+
+async function fetchDailyMarketDataViaUndici({ secid, days }) {
+  const ut = encodeURIComponent(process.env.EASTMONEY_UT || EASTMONEY_DEFAULT_UT);
+  const callback = `jsonp_kline_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+  const url =
+    `${EASTMONEY_KLINE_URL}` +
+    `?cb=${callback}` +
+    `&secid=${secid}` +
+    `&ut=${ut}` +
+    `&fields1=f1,f2,f3,f4,f5,f6` +
+    `&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61` +
+    `&klt=101` +
+    `&fqt=1` +
+    `&beg=0` +
+    `&end=20500101` +
+    `&lmt=${Math.max(25, Number(days) || 25)}` +
+    `&_=${Date.now()}`;
+
+  const jsonpInit = {
+    headers: {
+      Accept: 'application/javascript, text/javascript, */*;q=0.1',
+      'Sec-Fetch-Mode': 'no-cors',
+      'Sec-Fetch-Site': 'cross-site',
+      'Sec-Fetch-Dest': 'script',
+    },
+  };
+  const { res, text } = await fetchEastmoneyText(
+    url,
+    { secid, kind: 'kline', forceHttp1: true },
+    jsonpInit
+  );
+
+  if (!res.ok) {
+    logEastmoneyError('fetchDailyMarketData HTTP error (returning empty)', {
+      url,
+      secid,
+      days,
+      status: res.status,
+      statusText: res.statusText,
+      bodyPreview: previewText(text),
+    });
+    return [];
+  }
+
+  const json = evaluateEastmoneyJsonp(text, callback);
+  if (!json?.data?.klines || !Array.isArray(json.data.klines)) {
+    logEastmoneyError('fetchDailyMarketData invalid JSONP payload (returning empty)', {
+      url,
+      topKeys: json && typeof json === 'object' ? Object.keys(json) : [],
+      dataKeys:
+        json?.data && typeof json.data === 'object' ? Object.keys(json.data) : [],
+      jsonPreview: previewText(JSON.stringify(json)),
+    });
+    return [];
+  }
+
+  const klines = json.data.klines.slice(-days);
+  return mapEastmoneyKlineRows(klines, 'eastmoney');
+}
+
+async function fetchDailyMarketDataViaBrowser({ secid, days }) {
+  try {
+    logEastmoneyError('fetchDailyMarketData falling back to browser JSONP', {
+      secid,
+      days,
+    });
+    return await fetchEastmoneyDailyKlinesViaBrowser(secid, days);
+  } catch (err) {
+    logEastmoneyError('fetchDailyMarketData browser fallback failed (returning empty)', {
+      secid,
+      days,
+      name: err?.name,
+      message: err?.message,
+    });
+    return [];
+  }
+}
+
+function mapEastmoneyKlineRows(klines, source) {
+  return klines.map((line) => {
+    const parts = String(line).split(',');
+    return {
+      date: parts[0],
+      open: Number(parts[1]),
+      close: Number(parts[2]),
+      high: Number(parts[3]),
+      low: Number(parts[4]),
+      volume: Number(parts[5]),
+      total_amount: Number(parts[6]),
+      amplitude: Number(parts[7]),
+      change_pct: Number(parts[8]),
+      change_amount: Number(parts[9]),
+      turnover_rate: Number(parts[10]),
+      source,
+    };
+  });
+}
+
+export async function fetchRealtimeQuote(code) {
+  const secid = normalizeSecId(code);
+  return fetchEastmoneyRealtimeQuoteViaBrowser(secid);
 }
 
 async function fetchEastmoneyText(url, context = {}, init) {
@@ -750,6 +923,7 @@ async function eastmoneyHttpFetch(url, init, context = {}) {
     proxyUrl,
     secid,
     selectedIp,
+    forceHttp1: context?.forceHttp1,
   });
   logEastmoneyDebug('request dispatch', {
     requestId: context.requestId,
@@ -848,9 +1022,22 @@ function createEastmoneyDispatcher(undiciMod, { proxyConfig, proxyUrl }) {
   return dispatcher;
 }
 
-function getEastmoneyDispatcherForRequest(undiciMod, { proxyUrl, secid, selectedIp }) {
+function getEastmoneyDispatcherForRequest(undiciMod, { proxyUrl, secid, selectedIp, forceHttp1 }) {
   if (proxyUrl) {
     return eastmoneyAgent;
+  }
+  if (forceHttp1) {
+    if (!undiciMod?.Agent) return eastmoneyAgent;
+    if (!eastmoneyScriptAgent) {
+      eastmoneyScriptAgent = new undiciMod.Agent({
+        allowH2: false,
+        connections: 1,
+        pipelining: 1,
+        keepAliveTimeout: EASTMONEY_KEEPALIVE_TIMEOUT_MS,
+        keepAliveMaxTimeout: EASTMONEY_KEEPALIVE_MAX_TIMEOUT_MS,
+      });
+    }
+    return eastmoneyScriptAgent;
   }
   if (!selectedIp) {
     return eastmoneyAgent;
@@ -920,6 +1107,10 @@ function simpleHash32(s) {
 
 function cacheKeyFlow(secid, days, fields2) {
   return `em:flow:${secid}:${days}:${fields2}`;
+}
+
+function cacheKeyDaily(secid, days) {
+  return `em:daily:${secid}:${days}`;
 }
 
 async function getOrFetchCached(key, fetcher) {
@@ -1024,6 +1215,20 @@ async function resetEastmoneyAgent(err, context = {}) {
       cause: destroyErr?.cause,
     });
   }
+  if (eastmoneyScriptAgent) {
+    try {
+      if (typeof eastmoneyScriptAgent.destroy === 'function') {
+        await eastmoneyScriptAgent.destroy(err);
+      } else if (typeof eastmoneyScriptAgent.close === 'function') {
+        await eastmoneyScriptAgent.close();
+      }
+    } catch (destroyErr) {
+      logEastmoneyError('script agent reset failed', {
+        message: destroyErr?.message,
+      });
+    }
+    eastmoneyScriptAgent = null;
+  }
 }
 
 function logEastmoneyError(label, detail) {
@@ -1072,6 +1277,31 @@ function previewText(text, maxLen = 800) {
   const s = text == null ? '' : String(text);
   if (s.length <= maxLen) return s;
   return `${s.slice(0, maxLen)}… (${s.length} chars total)`;
+}
+
+function evaluateEastmoneyJsonp(text, callbackName) {
+  if (!callbackName) return null;
+  const body = String(text || '').trim();
+  if (!body) return null;
+
+  let payload = null;
+  const sandbox = {
+    [callbackName]: (data) => {
+      payload = data;
+    },
+  };
+  try {
+    const script = new vm.Script(body);
+    script.runInNewContext(sandbox, { timeout: 1000 });
+    return payload;
+  } catch (err) {
+    logEastmoneyError('evaluateEastmoneyJsonp failed', {
+      callbackName,
+      error: String(err),
+      bodyPreview: previewText(body, 240),
+    });
+    return null;
+  }
 }
 
 function backoffWithJitterMs(attempt) {

@@ -13,7 +13,11 @@
     "probe:eastmoney": "node scripts/probe-eastmoney.mjs",
     "probe:eastmoney:kline": "node scripts/probe-eastmoney-kline.mjs",
     "probe:eastmoney:kline:browser": "node scripts/probe-eastmoney-kline-browser.mjs",
+    "probe:eastmoney:kline:browser:matrix": "node scripts/probe-eastmoney-kline-browser-matrix.mjs",
+    "probe:eastmoney:kline:browser:service": "node scripts/probe-eastmoney-kline-browser-service.mjs",
     "capture:eastmoney:page": "node scripts/capture-eastmoney-page-requests.mjs",
+    "probe:eastmoney:stock:get": "node scripts/probe-eastmoney-stock-get.mjs",
+    "probe:eastmoney:stock:get:browser": "node scripts/probe-eastmoney-stock-get-browser.mjs",
     "probe:eastmoney:fflow:raw": "node scripts/probe-eastmoney-fflow-raw.mjs",
     "scan:eastmoney:fflow:fields": "node scripts/scan-eastmoney-fflow-fields.mjs",
     "check:eastmoney:fflow:balance": "node scripts/check-eastmoney-fflow-balance.mjs"

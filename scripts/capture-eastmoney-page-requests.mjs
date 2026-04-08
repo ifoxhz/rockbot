@@ -4,7 +4,8 @@ import { chromium } from 'playwright';
 
 const code = process.argv[2] || '601179';
 const marketCode = code.startsWith('6') ? `sh${code}` : `sz${code}`;
-const pageUrl = `https://quote.eastmoney.com/${marketCode}.html`;
+const pageMode = (process.argv[3] || process.env.EASTMONEY_PAGE_MODE || 'legacy').trim();
+const pageUrl = resolvePageUrl(code, marketCode, pageMode);
 const browserPath =
   process.env.PLAYWRIGHT_CHROMIUM_PATH ||
   '/home/yong/.cache/ms-playwright/chromium-1217/chrome-linux64/chrome';
@@ -103,6 +104,7 @@ try {
           status: nav?.status?.() ?? null,
           finalUrl: page.url(),
         },
+        pageMode,
         totalCaptured: events.length,
         events,
       },
@@ -130,4 +132,17 @@ function pickHeaders(headers) {
     if (headers[key]) out[key] = headers[key];
   }
   return out;
+}
+
+function resolvePageUrl(code, marketCode, pageMode) {
+  if (/^https?:\/\//i.test(pageMode)) {
+    return pageMode;
+  }
+
+  if (pageMode === 'unify') {
+    const secid = code.startsWith('6') ? `1.${code}` : `0.${code}`;
+    return `https://quote.eastmoney.com/unify/cr/${secid}`;
+  }
+
+  return `https://quote.eastmoney.com/${marketCode}.html`;
 }
