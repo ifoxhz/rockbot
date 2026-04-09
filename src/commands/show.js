@@ -11,21 +11,8 @@ export const showCommand = new Command('show')
   .action((code, options) => {
     const date = normalizeDateInput(options.date);
     try {
-      const { rows } = readDailyFundFlowPayload(code, date);
-
-      const table = rows.map((row) => ({
-        date: row.date,
-        small_s: calculateSellPercentage(row.small_sell, row.medium_sell, row.large_sell, row.extra_large_sell, 'small'),
-        medium_s: calculateSellPercentage(row.small_sell, row.medium_sell, row.large_sell, row.extra_large_sell, 'medium'),
-        large_s: calculateSellPercentage(row.small_sell, row.medium_sell, row.large_sell, row.extra_large_sell, 'large'),
-        extra_large_s: calculateSellPercentage(row.small_sell, row.medium_sell, row.large_sell, row.extra_large_sell, 'extra_large'),
-        small_b: calculateBuyPercentage(row.small_buy, row.medium_buy, row.large_buy, row.extra_large_buy, 'small'),
-        medium_b: calculateBuyPercentage(row.small_buy, row.medium_buy, row.large_buy, row.extra_large_buy, 'medium'),
-        large_b: calculateBuyPercentage(row.small_buy, row.medium_buy, row.large_buy, row.extra_large_buy, 'large'),
-        extra_large_b: calculateBuyPercentage(row.small_buy, row.medium_buy, row.large_buy, row.extra_large_buy, 'extra_large'),
-        change_pct: row.change_pct,
-        turnover_rate: row.turnover_rate
-      }));
+      const { payload } = readDailyFundFlowPayload(code, date);
+      const table = Array.isArray(payload?.data) ? payload.data : [];
 
       printAlternatingTable(table);
     } catch (err) {
@@ -34,51 +21,13 @@ export const showCommand = new Command('show')
     }
   });
 
-function calculateSellPercentage(smallSell, mediumSell, largeSell, extraLargeSell, size) {
-  const small = Number(smallSell) || 0;
-  const medium = Number(mediumSell) || 0;
-  const large = Number(largeSell) || 0;
-  const extraLarge = Number(extraLargeSell) || 0;
-  const total = small + medium + large + extraLarge;
-
-  if (total === 0) return '0.00%';
-
-  let value = 0;
-  if (size === 'small') value = small;
-  else if (size === 'medium') value = medium;
-  else if (size === 'large') value = large;
-  else if (size === 'extra_large') value = extraLarge;
-
-  const percentage = (value / total) * 100;
-  return `${percentage.toFixed(2)}%`;
-}
-
-function calculateBuyPercentage(smallBuy, mediumBuy, largeBuy, extraLargeBuy, size) {
-  const small = Number(smallBuy) || 0;
-  const medium = Number(mediumBuy) || 0;
-  const large = Number(largeBuy) || 0;
-  const extraLarge = Number(extraLargeBuy) || 0;
-  const total = small + medium + large + extraLarge;
-
-  if (total === 0) return '0.00%';
-
-  let value = 0;
-  if (size === 'small') value = small;
-  else if (size === 'medium') value = medium;
-  else if (size === 'large') value = large;
-  else if (size === 'extra_large') value = extraLarge;
-
-  const percentage = (value / total) * 100;
-  return `${percentage.toFixed(2)}%`;
-}
-
 function printAlternatingTable(rows) {
   if (!Array.isArray(rows) || rows.length === 0) {
     process.stdout.write('(no data)\n');
     return;
   }
 
-  const columns = Object.keys(rows[0]);
+  const columns = collectColumns(rows);
   const widths = {};
 
   for (const col of columns) {
@@ -108,8 +57,33 @@ function printAlternatingTable(rows) {
   }
 }
 
+function collectColumns(rows) {
+  const preferred = [
+    'date',
+    'main_net',
+    'small',
+    'medium',
+    'large',
+    'extra_large',
+    'change_pct',
+    'turnover_rate',
+  ];
+  const set = new Set();
+  for (const row of rows) {
+    for (const key of Object.keys(row || {})) {
+      set.add(key);
+    }
+  }
+  return preferred.filter((key) => set.has(key));
+}
+
 function stringifyCell(value) {
   if (value == null) return '';
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return '';
+    if (Number.isInteger(value)) return String(value);
+    return value.toFixed(3).replace(/\.?0+$/, '');
+  }
   return String(value);
 }
 

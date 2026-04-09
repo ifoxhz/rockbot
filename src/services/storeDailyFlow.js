@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import * as eastmoneyFlow from './eastmoneyDailyFlow.js';
 
 const DAILY_BASE_DIR = path.resolve('data/daily_fund_flow');
 const ANALYSIS_BASE_DIR = path.resolve('data/analysis');
@@ -24,8 +25,9 @@ export function storeDailyFundFlow(code, dailyData, options = {}) {
 
   const payload = {
     code,
-    unit: 'million_cny',
+    unit: options.unit || 'million_cny',
     source: resolveSource(options.source, dailyData),
+    data_format: options.dataFormat || 'normalized_v1',
     algorithm_version: 'daily_fund_flow_v1',
     generated_at: new Date().toISOString(),
     download_date: date,
@@ -402,9 +404,21 @@ export function readDailyFundFlowPayload(code, date) {
 
   const raw = fs.readFileSync(filePath, 'utf-8');
   const payload = JSON.parse(raw);
-  const rows = Array.isArray(payload?.data) ? payload.data : [];
+  const storedRows = Array.isArray(payload?.data) ? payload.data : [];
+  const rows = normalizeStoredRows(payload, storedRows);
 
   return { filePath, payload, rows };
+}
+
+function normalizeStoredRows(payload, rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  const source = String(payload?.source || '').trim().toLowerCase();
+  const dataFormat = String(payload?.data_format || '').trim().toLowerCase();
+
+  if (source === 'eastmoney' && dataFormat === 'raw_online_v1') {
+    return eastmoneyFlow.normalizeDailyFlow(rows);
+  }
+  return rows;
 }
 
 export function listDailyFundFlowFiles(date) {

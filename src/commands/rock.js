@@ -57,9 +57,16 @@ export const rockCommand = new Command('rock')
         if (!Array.isArray(daily) || daily.length === 0) {
           continue;
         }
-        storeDailyFundFlow(code, daily, { date: downloadDate, source });
+        const storageData = daily;
+        storeDailyFundFlow(code, storageData, {
+          date: downloadDate,
+          source,
+          dataFormat: 'normalized_v1',
+          unit: 'million_cny',
+        });
 
         const check = runStockAnalysis(code, {
+          rows: daily,
           date: downloadDate,
           minTurnover,
         });

@@ -331,22 +331,6 @@ export async function fetchDailyFundFlow(code, days = 25) {
 
   return flowRows.map((row) => {
     const marketRow = dailyMap.get(row.date) || null;
-    const totalAmount = marketRow?.total_amount ?? estimateTotalAmountFromNetFlows(row);
-    const totalAmountSource = marketRow?.total_amount != null ? 'eastmoney_kline' : 'estimated_from_flow';
-    const buy = estimateBuyAmounts({
-      small: row.small,
-      medium: row.medium,
-      large: row.large,
-      extraLarge: row.extra_large,
-      totalAmount,
-    });
-    const sell = estimateSellAmounts({
-      small: row.small,
-      medium: row.medium,
-      large: row.large,
-      extraLarge: row.extra_large,
-      totalAmount,
-    });
     return {
       date: row.date,
       main_net: row.main_net,
@@ -357,21 +341,12 @@ export async function fetchDailyFundFlow(code, days = 25) {
       high: dailyMap.get(row.date)?.high ?? null,
       low: dailyMap.get(row.date)?.low ?? null,
       volume: dailyMap.get(row.date)?.volume ?? null,
-      total_amount: totalAmount,
-      total_amount_source: totalAmountSource,
+      total_amount: dailyMap.get(row.date)?.total_amount ?? null,
       amplitude: dailyMap.get(row.date)?.amplitude ?? null,
       small: row.small,
-      small_buy: buy.small_buy,
-      small_sell: sell.small_sell,
       medium: row.medium,
-      medium_buy: buy.medium_buy,
-      medium_sell: sell.medium_sell,
       large: row.large,
-      large_buy: buy.large_buy,
-      large_sell: sell.large_sell,
       extra_large: row.extra_large,
-      extra_large_buy: buy.extra_large_buy,
-      extra_large_sell: sell.extra_large_sell,
       change_pct: dailyMap.get(row.date)?.change_pct ?? null,
       change_amount: dailyMap.get(row.date)?.change_amount ?? null,
       turnover_rate: dailyMap.get(row.date)?.turnover_rate ?? null,
@@ -429,7 +404,7 @@ export async function fetchDailyFundFlowBatch(codes, days = 25, opts = {}) {
 export function normalizeDailyFlow(rows) {
   return rows.map((row) => ({
     date: row.date,
-    main_net: toMillion(row.main_net),
+    main_net: toMillionOrNull(row.main_net),
     main_net_ratio: row.main_net_ratio,
     small_net_ratio: row.small_net_ratio,
     open: row.open,
@@ -437,21 +412,12 @@ export function normalizeDailyFlow(rows) {
     high: row.high,
     low: row.low,
     volume: row.volume,
-    total_amount: toMillion(row.total_amount),
-    total_amount_source: row.total_amount_source || null,
+    total_amount: toMillionOrNull(row.total_amount),
     amplitude: row.amplitude,
-    small: toMillion(row.small),
-    small_buy: toMillion(row.small_buy),
-    small_sell: toMillion(row.small_sell),
-    medium: toMillion(row.medium),
-    medium_buy: toMillion(row.medium_buy),
-    medium_sell: toMillion(row.medium_sell),
-    large: toMillion(row.large),
-    large_buy: toMillion(row.large_buy),
-    large_sell: toMillion(row.large_sell),
-    extra_large: toMillion(row.extra_large),
-    extra_large_buy: toMillion(row.extra_large_buy),
-    extra_large_sell: toMillion(row.extra_large_sell),
+    small: toMillionOrNull(row.small),
+    medium: toMillionOrNull(row.medium),
+    large: toMillionOrNull(row.large),
+    extra_large: toMillionOrNull(row.extra_large),
     change_pct: row.change_pct,
     change_amount: row.change_amount,
     turnover_rate: row.turnover_rate,
@@ -1530,4 +1496,10 @@ function normalizeSecId(code) {
 
 function toMillion(value) {
   return Number((value / 1_000_000).toFixed(3));
+}
+
+function toMillionOrNull(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return toMillion(n);
 }
