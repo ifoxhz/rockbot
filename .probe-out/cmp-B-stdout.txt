@@ -1,0 +1,87 @@
+[dotenv@17.3.1] injecting env (25) from .env -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+{
+  "startedAt": "2026-04-10T02:31:25.288Z",
+  "iterations": 12,
+  "days": 25,
+  "resetEvery": 0,
+  "codes": [
+    "601179"
+  ],
+  "ok": 5,
+  "fail": 7,
+  "resets": 0,
+  "firstFailIndex": 2,
+  "errors": [
+    {
+      "i": 2,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 5986
+    },
+    {
+      "i": 3,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.38.143",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 10715
+    },
+    {
+      "i": 4,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "120.79.243.12",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 6999
+    },
+    {
+      "i": 6,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "101.226.30.221",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 9768
+    },
+    {
+      "i": 7,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 8263
+    },
+    {
+      "i": 10,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 6907
+    },
+    {
+      "i": 11,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 10328
+    }
+  ],
+  "finishedAt": "2026-04-10T02:32:49.705Z"
+}

@@ -332,11 +332,58 @@ export function turnoverRateUptrend(minSlope = 0) {
   };
 }
 
+// Hook / filter:
+// Compare aggregated net flow between small orders and extra-large orders.
+// Rules:
+// 1) extra_large > 0 and small > 0 => pass
+// 2) extra_large > 0 and small < 0 => pass only when extra_large > abs(small)
+// 3) extra_large < 0 and small > 0 => pass only when small > abs(extra_large)
+// 4) extra_large < 0 and small < 0 => fail
+export function smallVsExtraLargeNetDominance() {
+  return (ctx) => {
+    const rows = Array.isArray(ctx?.rows) ? ctx.rows : [];
+    let smallNet = 0;
+    let extraLargeNet = 0;
+
+    for (const row of rows) {
+      const small = Number(row?.small);
+      const extraLarge = Number(row?.extra_large);
+      if (Number.isFinite(small)) smallNet += small;
+      if (Number.isFinite(extraLarge)) extraLargeNet += extraLarge;
+    }
+
+    const extraPos = extraLargeNet > 0;
+    const smallPos = smallNet > 0;
+    const extraNeg = extraLargeNet < 0;
+    const smallNeg = smallNet < 0;
+
+    let pass = false;
+    if (extraPos && smallPos) {
+      pass = true;
+    } else if (extraPos && smallNeg) {
+      pass = extraLargeNet > Math.abs(smallNet);
+    } else if (extraNeg && smallPos) {
+      pass = smallNet > Math.abs(extraLargeNet);
+    } else if (extraNeg && smallNeg) {
+      pass = false;
+    }
+    // console.log('smallVsExtraLargeNetDominance: ', pass,'smallNet: ', smallNet,'extraLargeNet: ', extraLargeNet);
+    return {
+      pass,
+      output: {
+        small_net_sum: Number(smallNet.toFixed(3)),
+        extra_large_net_sum: Number(extraLargeNet.toFixed(3)),
+      },
+    };
+  };
+}
+
 export function buildStockFilters(config = {}) {
   const resolved = resolveAnalysisConfig(config);
   return [
     checkSmallNetBuyStreak(resolved.minStreakDays),
-    changePctStddev(resolved.stddevMin, resolved.stddevMax),
+    smallVsExtraLargeNetDominance(),
+    changePctStddev(2.5, 3.5),
     // risingDaysGreater(),
     averageTurnoverRateGreaterThan(resolved.minTurnover),
     // extraLargeBuyRatioDominance(
@@ -345,7 +392,7 @@ export function buildStockFilters(config = {}) {
     // ),
     // extraLargeBuyRatioUptrend(resolved.extraLargeBuyTrendMinSlope),
     // extraLargeSellRatioUptrend(0),
-    turnoverRateUptrend(resolved.turnoverRateTrendMinSlope),
+    // turnoverRateUptrend(resolved.turnoverRateTrendMinSlope),
     // checkExtraLargeNetBuyStreak(resolved.extraLargeMinStreakDays || resolved.minStreakDays),
   ];
 }

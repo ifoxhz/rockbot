@@ -1,0 +1,127 @@
+
+> rockbot@1.0.0 probe:eastmoney:kline:turnover
+> node scripts/probe-eastmoney-kline-turnover.mjs 601179 601190 --days 25
+
+[dotenv@17.3.1] injecting env (26) from .env -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
+{
+  "startedAt": "2026-04-10T08:56:00.203Z",
+  "days": 25,
+  "codes": [
+    "601179",
+    "601190"
+  ],
+  "ipTargets": [
+    "101.226.30.221",
+    "117.184.38.143",
+    "120.79.243.12",
+    "117.184.40.129"
+  ],
+  "total": 8,
+  "ok": 4,
+  "fail": 4,
+  "byIp": {
+    "101.226.30.221": {
+      "total": 2,
+      "ok": 1,
+      "fail": 1
+    },
+    "117.184.38.143": {
+      "total": 2,
+      "ok": 1,
+      "fail": 1
+    },
+    "120.79.243.12": {
+      "total": 2,
+      "ok": 1,
+      "fail": 1
+    },
+    "117.184.40.129": {
+      "total": 2,
+      "ok": 1,
+      "fail": 1
+    }
+  },
+  "finishedAt": "2026-04-10T08:56:21.696Z",
+  "rows": [
+    {
+      "code": "601179",
+      "secid": "1.601179",
+      "ip": "101.226.30.221",
+      "ok": true,
+      "count": 25,
+      "elapsedMs": 4587,
+      "date": "2026-04-10",
+      "change_pct": 1.84,
+      "turnover_rate": 3.58
+    },
+    {
+      "code": "601190",
+      "secid": "1.601190",
+      "ip": "101.226.30.221",
+      "ok": false,
+      "elapsedMs": 2416,
+      "message": "Eastmoney browser kline JSONP failed after retries: {\"ok\":true,\"mode\":\"callback\",\"payload\":{\"rc\":100,\"rt\":1,\"svr\":177617933,\"lt\":1,\"full\":1,\"dlmkts\":\"\",\"data\":null},\"targetUrl\":\"https://push2his.eastmoney.com/api/qt/stock/kline/get?cb=jsonp_kline_1775811367120_70249&secid=1.601190&ut=fa5fd1943c7b386f172d6893dbfba10b&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&beg=0&end=20500101&lmt=25&_=1775811367120\",\"networkResult\":{\"type\":\"response\",\"status\":200,\"contentType\":\"text/plain\",\"bodyPreview\":\"jsonp_kline_1775811367120_70249({\\\"rc\\\":100,\\\"rt\\\":1,\\\"svr\\\":177617933,\\\"lt\\\":1,\\\"full\\\":1,\\\"dlmkts\\\":\\\"\\\",\\\"data\\\":null});\"},\"attempt\":1,\"resolveIp\":\"101.226.30.221\",\"host\":\"push2his.eastmoney.com\"}",
+      "name": "Error"
+    },
+    {
+      "code": "601179",
+      "secid": "1.601179",
+      "ip": "117.184.38.143",
+      "ok": true,
+      "count": 25,
+      "elapsedMs": 2613,
+      "date": "2026-04-10",
+      "change_pct": 1.84,
+      "turnover_rate": 3.58
+    },
+    {
+      "code": "601190",
+      "secid": "1.601190",
+      "ip": "117.184.38.143",
+      "ok": false,
+      "elapsedMs": 1749,
+      "message": "Eastmoney browser kline JSONP failed after retries: {\"ok\":true,\"mode\":\"callback\",\"payload\":{\"rc\":100,\"rt\":1,\"svr\":181669694,\"lt\":1,\"full\":1,\"dlmkts\":\"\",\"data\":null},\"targetUrl\":\"https://push2his.eastmoney.com/api/qt/stock/kline/get?cb=jsonp_kline_1775811371660_270&secid=1.601190&ut=fa5fd1943c7b386f172d6893dbfba10b&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&beg=0&end=20500101&lmt=25&_=1775811371660\",\"networkResult\":{\"type\":\"response\",\"status\":200,\"contentType\":\"text/plain\",\"bodyPreview\":\"jsonp_kline_1775811371660_270({\\\"rc\\\":100,\\\"rt\\\":1,\\\"svr\\\":181669694,\\\"lt\\\":1,\\\"full\\\":1,\\\"dlmkts\\\":\\\"\\\",\\\"data\\\":null});\"},\"attempt\":1,\"resolveIp\":\"117.184.38.143\",\"host\":\"push2his.eastmoney.com\"}",
+      "name": "Error"
+    },
+    {
+      "code": "601179",
+      "secid": "1.601179",
+      "ip": "120.79.243.12",
+      "ok": true,
+      "count": 25,
+      "elapsedMs": 2652,
+      "date": "2026-04-10",
+      "change_pct": 1.84,
+      "turnover_rate": 3.58
+    },
+    {
+      "code": "601190",
+      "secid": "1.601190",
+      "ip": "120.79.243.12",
+      "ok": false,
+      "elapsedMs": 2088,
+      "message": "Eastmoney browser kline JSONP failed after retries: {\"ok\":true,\"mode\":\"callback\",\"payload\":{\"rc\":100,\"rt\":1,\"svr\":183124094,\"lt\":1,\"full\":1,\"dlmkts\":\"\",\"data\":null},\"targetUrl\":\"https://push2his.eastmoney.com/api/qt/stock/kline/get?cb=jsonp_kline_1775811376489_99281&secid=1.601190&ut=fa5fd1943c7b386f172d6893dbfba10b&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&beg=0&end=20500101&lmt=25&_=1775811376489\",\"networkResult\":{\"type\":\"response\",\"status\":200,\"contentType\":\"text/plain\",\"bodyPreview\":\"jsonp_kline_1775811376489_99281({\\\"rc\\\":100,\\\"rt\\\":1,\\\"svr\\\":183124094,\\\"lt\\\":1,\\\"full\\\":1,\\\"dlmkts\\\":\\\"\\\",\\\"data\\\":null});\"},\"attempt\":1,\"resolveIp\":\"120.79.243.12\",\"host\":\"push2his.eastmoney.com\"}",
+      "name": "Error"
+    },
+    {
+      "code": "601179",
+      "secid": "1.601179",
+      "ip": "117.184.40.129",
+      "ok": true,
+      "count": 25,
+      "elapsedMs": 2621,
+      "date": "2026-04-10",
+      "change_pct": 1.84,
+      "turnover_rate": 3.58
+    },
+    {
+      "code": "601190",
+      "secid": "1.601190",
+      "ip": "117.184.40.129",
+      "ok": false,
+      "elapsedMs": 1856,
+      "message": "Eastmoney browser kline JSONP failed after retries: {\"ok\":true,\"mode\":\"callback\",\"payload\":{\"rc\":100,\"rt\":1,\"svr\":177617930,\"lt\":1,\"full\":1,\"dlmkts\":\"\",\"data\":null},\"targetUrl\":\"https://push2his.eastmoney.com/api/qt/stock/kline/get?cb=jsonp_kline_1775811381317_80067&secid=1.601190&ut=fa5fd1943c7b386f172d6893dbfba10b&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&beg=0&end=20500101&lmt=25&_=1775811381317\",\"networkResult\":{\"type\":\"response\",\"status\":200,\"contentType\":\"text/plain\",\"bodyPreview\":\"jsonp_kline_1775811381317_80067({\\\"rc\\\":100,\\\"rt\\\":1,\\\"svr\\\":177617930,\\\"lt\\\":1,\\\"full\\\":1,\\\"dlmkts\\\":\\\"\\\",\\\"data\\\":null});\"},\"attempt\":1,\"resolveIp\":\"117.184.40.129\",\"host\":\"push2his.eastmoney.com\"}",
+      "name": "Error"
+    }
+  ]
+}

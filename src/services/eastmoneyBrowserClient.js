@@ -8,7 +8,13 @@ const EASTMONEY_BROWSER_TIMEOUT_MS = Math.max(
   2_000,
   Number.parseInt(String(process.env.EASTMONEY_BROWSER_TIMEOUT_MS || '15000'), 10) || 15_000
 );
+const EASTMONEY_BROWSER_FETCH_RETRIES = Math.max(
+  0,
+  Number.parseInt(String(process.env.EASTMONEY_BROWSER_FETCH_RETRIES || '3'), 10) || 3
+);
 const EASTMONEY_BROWSER_ENABLED = process.env.EASTMONEY_BROWSER_ENABLED !== '0';
+const EASTMONEY_PUSH2HIS_DOMAIN = 'push2his.eastmoney.com';
+const EASTMONEY_BROWSER_DEBUG = process.env.EASTMONEY_BROWSER_DEBUG === '1';
 
 let playwrightModPromise = null;
 let browserPromise = null;
@@ -17,6 +23,29 @@ let pagePromise = null;
 let browserQueue = Promise.resolve();
 let cleanupHookInstalled = false;
 let idleCloseTimer = null;
+let eastmoneyBrowserHostRoundRobin = 0;
+let eastmoneyBrowserResolveIpOverride = null;
+
+function parseEastmoneyPush2hisHosts() {
+  const raw =
+    process.env.EASTMONEY_PUSH2HIS_HOSTS ||
+    process.env.EASTMONEY_PUSH2HIS_HOST ||
+    'push2his.eastmoney.com';
+  const out = [];
+  for (const part of String(raw).split(/[\s,]+/)) {
+    const host = part.trim().toLowerCase();
+    if (!host) continue;
+    out.push(host);
+  }
+  return out.length > 0 ? out : ['push2his.eastmoney.com'];
+}
+
+function pickEastmoneyPush2hisHost(secid, attempt) {
+  const hosts = parseEastmoneyPush2hisHosts();
+  if (hosts.length === 1) return hosts[0];
+  const base = secid ? Math.abs(simpleHash32(secid)) % hosts.length : eastmoneyBrowserHostRoundRobin++;
+  return hosts[(base + Math.max(0, attempt - 1)) % hosts.length];
+}
 
 function secidToMarketCode(secid) {
   const [market, code] = String(secid || '').split('.');
@@ -37,6 +66,48 @@ function eastmoneyBrowserUserAgent() {
   );
 }
 
+function eastmoneyBrowserLaunchArgs() {
+  const args = [];
+  const explicitRules = String(process.env.EASTMONEY_BROWSER_HOST_RESOLVER_RULES || '').trim();
+  const resolveIp = String(
+    eastmoneyBrowserResolveIpOverride || process.env.EASTMONEY_BROWSER_RESOLVE_PUSH2HIS_IP || ''
+  ).trim();
+
+  if (explicitRules) {
+    args.push(`--host-resolver-rules=${explicitRules}`);
+    return args;
+  }
+
+  if (resolveIp) {
+    // Keep URL as domain while forcing DNS resolution to target IP.
+    args.push(
+      `--host-resolver-rules=MAP ${EASTMONEY_PUSH2HIS_DOMAIN} ${resolveIp},EXCLUDE localhost`
+    );
+  }
+  return args;
+}
+
+function parseEastmoneyBrowserResolveIpPool() {
+  const raw = String(process.env.EASTMONEY_PUSH2HIS_IPS || '').trim();
+  if (!raw) return [];
+  const out = [];
+  for (const part of raw.split(/[\s,]+/)) {
+    const ip = part.trim();
+    if (!ip) continue;
+    out.push(ip);
+  }
+  return out;
+}
+
+function pickEastmoneyBrowserResolveIp(secid, attempt) {
+  const pool = parseEastmoneyBrowserResolveIpPool();
+  if (pool.length === 0) {
+    return String(process.env.EASTMONEY_BROWSER_RESOLVE_PUSH2HIS_IP || '').trim() || null;
+  }
+  const base = secid ? Math.abs(simpleHash32(secid)) % pool.length : eastmoneyBrowserHostRoundRobin++;
+  return pool[(base + Math.max(0, attempt - 1)) % pool.length];
+}
+
 async function loadPlaywright() {
   if (!playwrightModPromise) {
     playwrightModPromise = import('playwright')
@@ -54,9 +125,19 @@ async function getBrowser() {
   if (!browserPromise) {
     browserPromise = (async () => {
       const { chromium } = await loadPlaywright();
+      const launchArgs = eastmoneyBrowserLaunchArgs();
+      if (EASTMONEY_BROWSER_DEBUG) {
+        console.error('[eastmoneyBrowserClient] chromium.launch', {
+          executablePath: PLAYWRIGHT_BROWSER_PATH,
+          headless: true,
+          args: launchArgs,
+          resolverIpOverride: eastmoneyBrowserResolveIpOverride,
+        });
+      }
       const browser = await chromium.launch({
         executablePath: PLAYWRIGHT_BROWSER_PATH,
         headless: true,
+        args: launchArgs,
       });
       installCleanupHook();
       return browser;
@@ -309,49 +390,148 @@ export async function fetchEastmoneyDailyKlinesViaBrowser(secid, days = 25) {
   if (!EASTMONEY_BROWSER_ENABLED) {
     throw new Error('EASTMONEY_BROWSER_ENABLED=0');
   }
-  return withBrowserPage(async (page) => {
-    await bootstrapQuotePage(page, secid);
-    const result = await injectJsonp(
-      page,
-      (callbackName) =>
-        `https://push2his.eastmoney.com/api/qt/stock/kline/get` +
-        `?cb=${callbackName}` +
-        `&secid=${secid}` +
-        `&ut=${encodeURIComponent(process.env.EASTMONEY_UT || EASTMONEY_DEFAULT_UT)}` +
-        `&fields1=f1,f2,f3,f4,f5,f6` +
-        `&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61` +
-        `&klt=101` +
-        `&fqt=1` +
-        `&beg=0` +
-        `&end=20500101` +
-        `&lmt=${Math.max(25, Number(days) || 25)}` +
-        `&_=${Date.now()}`,
-      'jsonp_kline'
-    );
-    if (!result?.ok || !Array.isArray(result?.payload?.data?.klines)) {
-      throw new Error(
-        `Eastmoney browser kline JSONP failed: ${result?.mode || 'unknown'} (${JSON.stringify(result?.networkResult || null)})`
-      );
+  let lastResult = null;
+  let attempt = 0;
+  while (true) {
+    attempt += 1;
+    const resolveIp = pickEastmoneyBrowserResolveIp(secid, attempt);
+    eastmoneyBrowserResolveIpOverride = resolveIp;
+    if (EASTMONEY_BROWSER_DEBUG) {
+      console.error('[eastmoneyBrowserClient] kline retry attempt', {
+        secid,
+        attempt,
+        maxAttempts: EASTMONEY_BROWSER_FETCH_RETRIES,
+        resolveIp,
+        domain: EASTMONEY_PUSH2HIS_DOMAIN,
+      });
     }
-    const klines = result.payload.data.klines.slice(-days);
-    return klines.map((line) => {
-      const parts = String(line).split(',');
-      return {
-        date: parts[0],
-        open: toFiniteOrNull(parts[1]),
-        close: toFiniteOrNull(parts[2]),
-        high: toFiniteOrNull(parts[3]),
-        low: toFiniteOrNull(parts[4]),
-        volume: toFiniteOrNull(parts[5]),
-        total_amount: toFiniteOrNull(parts[6]),
-        amplitude: toFiniteOrNull(parts[7]),
-        change_pct: toFiniteOrNull(parts[8]),
-        change_amount: toFiniteOrNull(parts[9]),
-        turnover_rate: toFiniteOrNull(parts[10]),
-        source: 'eastmoney_browser_kline',
-      };
+    await closeEastmoneyBrowser();
+
+    const result = await withBrowserPage(async (page) => {
+      await bootstrapQuotePage(page, secid);
+      return injectJsonp(
+        page,
+        (callbackName) =>
+          `https://${EASTMONEY_PUSH2HIS_DOMAIN}/api/qt/stock/kline/get` +
+          `?cb=${callbackName}` +
+          `&secid=${secid}` +
+          `&ut=${encodeURIComponent(process.env.EASTMONEY_UT || EASTMONEY_DEFAULT_UT)}` +
+          `&fields1=f1,f2,f3,f4,f5,f6` +
+          `&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61` +
+          `&klt=101` +
+          `&fqt=1` +
+          `&beg=0` +
+          `&end=20500101` +
+          `&lmt=${Math.max(25, Number(days) || 25)}` +
+          `&_=${Date.now()}`,
+        'jsonp_kline'
+      );
     });
-  });
+
+    if (result?.ok && Array.isArray(result?.payload?.data?.klines)) {
+      const klines = result.payload.data.klines.slice(-days);
+      return klines.map((line) => {
+        const parts = String(line).split(',');
+        return {
+          date: parts[0],
+          open: toFiniteOrNull(parts[1]),
+          close: toFiniteOrNull(parts[2]),
+          high: toFiniteOrNull(parts[3]),
+          low: toFiniteOrNull(parts[4]),
+          volume: toFiniteOrNull(parts[5]),
+          total_amount: toFiniteOrNull(parts[6]),
+          amplitude: toFiniteOrNull(parts[7]),
+          change_pct: toFiniteOrNull(parts[8]),
+          change_amount: toFiniteOrNull(parts[9]),
+          turnover_rate: toFiniteOrNull(parts[10]),
+          source: 'eastmoney_browser_kline',
+        };
+      });
+    }
+
+    lastResult = { ...result, attempt, resolveIp, host: EASTMONEY_PUSH2HIS_DOMAIN };
+    const retryable = isRetryableEastmoneyBrowserJsonpError(result);
+    // follow business design: keep rotating and retrying on network-like errors
+    if (!retryable) {
+      break;
+    }
+    if (EASTMONEY_BROWSER_FETCH_RETRIES > 0 && attempt >= EASTMONEY_BROWSER_FETCH_RETRIES) {
+      break;
+    }
+    await sleep(250 * Math.min(attempt, 10));
+  }
+
+  throw new Error(
+    `Eastmoney browser kline JSONP failed after retries: ${JSON.stringify(lastResult || null)}`
+  );
+}
+
+export async function fetchEastmoneyFlowKlinesViaBrowser(
+  secid,
+  days = 25,
+  fields2 = 'f51,f52,f53,f54,f55,f56,f57,f58'
+) {
+  if (!EASTMONEY_BROWSER_ENABLED) {
+    throw new Error('EASTMONEY_BROWSER_ENABLED=0');
+  }
+  let lastResult = null;
+  let attempt = 0;
+  while (true) {
+    attempt += 1;
+    const resolveIp = pickEastmoneyBrowserResolveIp(secid, attempt);
+    eastmoneyBrowserResolveIpOverride = resolveIp;
+    if (EASTMONEY_BROWSER_DEBUG) {
+      console.error('[eastmoneyBrowserClient] flow retry attempt', {
+        secid,
+        attempt,
+        maxAttempts: EASTMONEY_BROWSER_FETCH_RETRIES,
+        resolveIp,
+        domain: EASTMONEY_PUSH2HIS_DOMAIN,
+        fields2,
+      });
+    }
+    await closeEastmoneyBrowser();
+
+    const result = await withBrowserPage(async (page) => {
+      await bootstrapQuotePage(page, secid);
+      return injectJsonp(
+        page,
+        (callbackName) =>
+          `https://${EASTMONEY_PUSH2HIS_DOMAIN}/api/qt/stock/fflow/kline/get` +
+          `?cb=${callbackName}` +
+          `&secid=${secid}` +
+          `&klt=101` +
+          `&lmt=${Math.max(1, Number(days) || 25)}` +
+          `&fields1=f1,f2` +
+          `&fields2=${encodeURIComponent(fields2)}` +
+          `&_=${Date.now()}`,
+        'jsonp_flow'
+      );
+    });
+
+    if (result?.ok && Array.isArray(result?.payload?.data?.klines)) {
+      return result.payload.data.klines.map((line) => {
+        const parts = String(line).split(',');
+        if (fields2 === 'f51') return parts[0];
+        if (fields2.startsWith('f51,')) {
+          return [parts[0], ...parts.slice(1).map((v) => Number(v))];
+        }
+        return parts.map((v) => Number(v));
+      });
+    }
+
+    lastResult = { ...result, attempt, resolveIp, host: EASTMONEY_PUSH2HIS_DOMAIN, fields2 };
+    const retryable = isRetryableEastmoneyBrowserJsonpError(result);
+    if (!retryable) break;
+    if (EASTMONEY_BROWSER_FETCH_RETRIES > 0 && attempt >= EASTMONEY_BROWSER_FETCH_RETRIES) {
+      break;
+    }
+    await sleep(250 * Math.min(attempt, 10));
+  }
+
+  throw new Error(
+    `Eastmoney browser flow JSONP failed after retries: ${JSON.stringify(lastResult || null)}`
+  );
 }
 
 function toFiniteOrNull(value, divisor = 1) {
@@ -414,4 +594,23 @@ function stripCacheBust(url) {
   } catch {
     return url;
   }
+}
+
+function isRetryableEastmoneyBrowserJsonpError(result) {
+  if (!result) return true;
+  if (result.mode === 'timeout') return true;
+  if (result.mode === 'script_error') return true;
+  const networkType = result.networkResult?.type;
+  if (networkType === 'requestfailed' || networkType === 'timeout') return true;
+  const status = Number(result.networkResult?.status);
+  if (Number.isFinite(status) && (status >= 500 || status === 429 || status === 403)) return true;
+  return false;
+}
+
+function simpleHash32(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i += 1) {
+    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  }
+  return h;
 }

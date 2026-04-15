@@ -20,7 +20,11 @@
     "probe:eastmoney:stock:get:browser": "node scripts/probe-eastmoney-stock-get-browser.mjs",
     "probe:eastmoney:fflow:raw": "node scripts/probe-eastmoney-fflow-raw.mjs",
     "scan:eastmoney:fflow:fields": "node scripts/scan-eastmoney-fflow-fields.mjs",
-    "check:eastmoney:fflow:balance": "node scripts/check-eastmoney-fflow-balance.mjs"
+    "check:eastmoney:fflow:balance": "node scripts/check-eastmoney-fflow-balance.mjs",
+    "probe:eastmoney:flow:sustained": "node scripts/probe-eastmoney-flow-sustained.mjs",
+    "probe:eastmoney:flow:envelope": "node scripts/probe-eastmoney-flow-envelope.mjs",
+    "probe:eastmoney:flow:rr-stripe": "node scripts/probe-eastmoney-flow-rr-stripe.mjs",
+    "probe:eastmoney:kline:turnover": "node scripts/probe-eastmoney-kline-turnover.mjs"
   },
   "keywords": [],
   "author": "",

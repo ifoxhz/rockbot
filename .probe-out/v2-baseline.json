@@ -1,0 +1,181 @@
+
+> rockbot@1.0.0 probe:eastmoney:flow:sustained
+> node scripts/probe-eastmoney-flow-sustained.mjs --iter 30 --code 601179
+
+[dotenv@17.3.1] injecting env (25) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+{
+  "startedAt": "2026-04-10T01:58:10.241Z",
+  "iterations": 30,
+  "days": 25,
+  "resetEvery": 0,
+  "codes": [
+    "601179"
+  ],
+  "ok": 14,
+  "fail": 16,
+  "resets": 0,
+  "firstFailIndex": 3,
+  "errors": [
+    {
+      "i": 3,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.38.143",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 7174
+    },
+    {
+      "i": 4,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "120.79.243.12",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 8496
+    },
+    {
+      "i": 7,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 8627
+    },
+    {
+      "i": 8,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 7523
+    },
+    {
+      "i": 11,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 7450
+    },
+    {
+      "i": 12,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 8334
+    },
+    {
+      "i": 13,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 10477
+    },
+    {
+      "i": 15,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 9528
+    },
+    {
+      "i": 16,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 9518
+    },
+    {
+      "i": 18,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 11797
+    },
+    {
+      "i": 21,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 9262
+    },
+    {
+      "i": 22,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 7372
+    },
+    {
+      "i": 26,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 9613
+    },
+    {
+      "i": 27,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 9637
+    },
+    {
+      "i": 28,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 6023
+    },
+    {
+      "i": 30,
+      "code": "601179",
+      "secid": "1.601179",
+      "tcpDialIp": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "elapsedMs": 8283
+    }
+  ],
+  "finishedAt": "2026-04-10T02:01:47.418Z"
+}

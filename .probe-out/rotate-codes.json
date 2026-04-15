@@ -1,0 +1,5 @@
+
+> rockbot@1.0.0 probe:eastmoney:flow:sustained
+> node scripts/probe-eastmoney-flow-sustained.mjs --iter 20 --codes 601179,000001,300750,688001
+
+[dotenv@17.3.1] injecting env (25) from .env -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild

@@ -6,12 +6,14 @@
 // - EASTMONEY_REFERER: override Referer
 // - EASTMONEY_USER_AGENT: fixed UA (overrides UA pool)
 // - EASTMONEY_UA_STRATEGY: hash | random — per-secid stable vs random UA per request (default hash)
-// - EASTMONEY_MAX_CONNECTIONS: undici Agent pool size (default 6)
-// - EASTMONEY_MIN_REQUEST_INTERVAL_MS: min gap between requests (default 1200)
-// - EASTMONEY_MAX_REQUEST_INTERVAL_MS: max gap between requests (default 2800)
+// - EASTMONEY_MAX_CONNECTIONS: undici Agent pool size to canonical host (default 1 = single TCP, best for HTTP/2)
+// - EASTMONEY_MIN_REQUEST_INTERVAL_MS: min gap between requests (default 3000)
+// - EASTMONEY_MAX_REQUEST_INTERVAL_MS: max gap between requests (default 8000; random jitter in [min,max] per request)
 // - EASTMONEY_DISABLE_UNDICI=1: use global fetch (no HTTP/2 / shared pool)
-// - EASTMONEY_BATCH_CONCURRENCY: default for fetchDailyFundFlowBatch (default 3)
+// - EASTMONEY_BATCH_CONCURRENCY: default for fetchDailyFundFlowBatch (default 1; HTTP still serial via global queue)
 // - EASTMONEY_PUSH2HIS_IPS: comma/space-separated IPs (undici only). Unset or empty → DNS only.
+// - EASTMONEY_PUSH2HIS_IP_PICK: hash (default) | round_robin — flow pool selection; round_robin uses env list order.
+// - EASTMONEY_PUSH2HIS_RR_STRIPE: with round_robin, advance to next IP every N requests (default 3).
 //   Request URL / logs still show https://push2his.eastmoney.com/... (correct Host + SNI); TCP dials
 //   the rotated IP. Used for flow requests only; daily change_pct / turnover_rate are supplemented
 //   by Tushare because Eastmoney kline is not stable enough here.
@@ -41,6 +43,7 @@ import net from 'node:net';
 import vm from 'node:vm';
 import {
   fetchEastmoneyDailyKlinesViaBrowser,
+  fetchEastmoneyFlowKlinesViaBrowser,
   fetchEastmoneyRealtimeQuoteViaBrowser,
 } from './eastmoneyBrowserClient.js';
 
@@ -63,15 +66,15 @@ const EASTMONEY_CACHE_MAX_ENTRIES = Math.max(
 );
 const EASTMONEY_BATCH_CONCURRENCY_DEFAULT = Math.max(
   1,
-  Number.parseInt(String(process.env.EASTMONEY_BATCH_CONCURRENCY || '3'), 10) || 3
+  Number.parseInt(String(process.env.EASTMONEY_BATCH_CONCURRENCY || '1'), 10) || 1
 );
 const EASTMONEY_MIN_REQUEST_INTERVAL_MS = Math.max(
   0,
-  Number.parseInt(String(process.env.EASTMONEY_MIN_REQUEST_INTERVAL_MS || '1200'), 10) || 1200
+  Number.parseInt(String(process.env.EASTMONEY_MIN_REQUEST_INTERVAL_MS || '3000'), 10) || 3000
 );
 const EASTMONEY_MAX_REQUEST_INTERVAL_MS = Math.max(
   EASTMONEY_MIN_REQUEST_INTERVAL_MS,
-  Number.parseInt(String(process.env.EASTMONEY_MAX_REQUEST_INTERVAL_MS || '2800'), 10) || 2800
+  Number.parseInt(String(process.env.EASTMONEY_MAX_REQUEST_INTERVAL_MS || '8000'), 10) || 8000
 );
 const EASTMONEY_REQUEST_TIMEOUT_MS = Math.max(
   1_000,
@@ -154,6 +157,8 @@ function parseEastmoneyPush2hisIpsFromEnv() {
 }
 
 let eastmoneyPush2hisIpRoundRobin = 0;
+/** Increments only when IP_PICK=round_robin (not on forcePush2hisIp). */
+let eastmoneyPush2hisStripeSeq = 0;
 /** @type {Map<string, { unhealthyUntil: number, failCount: number, lastError?: string }>} */
 const eastmoneyIpHealth = new Map();
 
@@ -232,12 +237,50 @@ function getAvailableEastmoneyPush2hisIps() {
   return healthy.length > 0 ? healthy : ips;
 }
 
+function getEastmoneyPush2hisIpPickMode() {
+  const raw = (process.env.EASTMONEY_PUSH2HIS_IP_PICK || 'hash').trim().toLowerCase();
+  if (raw === 'round_robin' || raw === 'rr' || raw === 'rotate') return 'round_robin';
+  return 'hash';
+}
+
 function pickEastmoneyPush2hisIp(secid) {
   const ips = getAvailableEastmoneyPush2hisIps();
   if (ips.length === 0) return null;
+
+  if (getEastmoneyPush2hisIpPickMode() === 'round_robin') {
+    const stripe = Math.max(
+      1,
+      Number.parseInt(String(process.env.EASTMONEY_PUSH2HIS_RR_STRIPE || '3'), 10) || 3
+    );
+    const seq = eastmoneyPush2hisStripeSeq++;
+    const group = Math.floor(seq / stripe) % ips.length;
+    return ips[group];
+  }
+
   if (!secid) {
     const ip = ips[eastmoneyPush2hisIpRoundRobin++ % ips.length];
     return ip;
+  }
+  const idx = Math.abs(simpleHash32(secid)) % ips.length;
+  return ips[idx];
+}
+
+function previewNextEastmoneyPush2hisIp(secid) {
+  const ips = getAvailableEastmoneyPush2hisIps();
+  if (ips.length === 0) return null;
+
+  if (getEastmoneyPush2hisIpPickMode() === 'round_robin') {
+    const stripe = Math.max(
+      1,
+      Number.parseInt(String(process.env.EASTMONEY_PUSH2HIS_RR_STRIPE || '3'), 10) || 3
+    );
+    const seq = eastmoneyPush2hisStripeSeq;
+    const group = Math.floor(seq / stripe) % ips.length;
+    return ips[group];
+  }
+
+  if (!secid) {
+    return ips[eastmoneyPush2hisIpRoundRobin % ips.length];
   }
   const idx = Math.abs(simpleHash32(secid)) % ips.length;
   return ips[idx];
@@ -350,7 +393,6 @@ export async function fetchDailyFundFlow(code, days = 25) {
       change_pct: dailyMap.get(row.date)?.change_pct ?? null,
       change_amount: dailyMap.get(row.date)?.change_amount ?? null,
       turnover_rate: dailyMap.get(row.date)?.turnover_rate ?? null,
-      market_data_source: marketRow?.source || null,
     };
   });
 }
@@ -404,7 +446,7 @@ export async function fetchDailyFundFlowBatch(codes, days = 25, opts = {}) {
 export function normalizeDailyFlow(rows) {
   return rows.map((row) => ({
     date: row.date,
-    main_net: toMillionOrNull(row.main_net),
+    main_net: toMillion(row.main_net),
     main_net_ratio: row.main_net_ratio,
     small_net_ratio: row.small_net_ratio,
     open: row.open,
@@ -412,16 +454,15 @@ export function normalizeDailyFlow(rows) {
     high: row.high,
     low: row.low,
     volume: row.volume,
-    total_amount: toMillionOrNull(row.total_amount),
+    total_amount: Number.isFinite(Number(row.total_amount)) ? toMillion(row.total_amount) : null,
     amplitude: row.amplitude,
-    small: toMillionOrNull(row.small),
-    medium: toMillionOrNull(row.medium),
-    large: toMillionOrNull(row.large),
-    extra_large: toMillionOrNull(row.extra_large),
+    small: toMillion(row.small),
+    medium: toMillion(row.medium),
+    large: toMillion(row.large),
+    extra_large: toMillion(row.extra_large),
     change_pct: row.change_pct,
     change_amount: row.change_amount,
     turnover_rate: row.turnover_rate,
-    market_data_source: row.market_data_source || null,
     unit: 'million',
     currency: 'CNY',
     source: 'eastmoney',
@@ -438,10 +479,12 @@ async function fetchKlines(args) {
 
 async function fetchFlowRows(args) {
   try {
-    const rows = await fetchKlines({
-      ...args,
-      fields2: 'f51,f52,f53,f54,f55,f56,f57,f58',
-    });
+    // Flow now uses browser JSONP path (same domain + resolver IP rotation strategy as kline).
+    const rows = await fetchEastmoneyFlowKlinesViaBrowser(
+      args.secid,
+      args.days,
+      'f51,f52,f53,f54,f55,f56,f57,f58'
+    );
 
     return rows.map((parts) => ({
       date: parts[0],
@@ -459,14 +502,12 @@ async function fetchFlowRows(args) {
       days: args?.days,
       message: err?.message,
     });
-    const dates = await fetchKlines({
-      ...args,
-      fields2: 'f51',
-    });
-    const rows = await fetchKlines({
-      ...args,
-      fields2: 'f53,f54,f55,f56',
-    });
+    const dates = await fetchEastmoneyFlowKlinesViaBrowser(args.secid, args.days, 'f51');
+    const rows = await fetchEastmoneyFlowKlinesViaBrowser(
+      args.secid,
+      args.days,
+      'f53,f54,f55,f56'
+    );
 
     return dates.map((date, index) => {
       const [small, medium, large, extraLarge] = rows[index] || [0, 0, 0, 0];
@@ -484,7 +525,7 @@ async function fetchFlowRows(args) {
   }
 }
 
-async function fetchKlinesUncached({ secid, days, fields2 }) {
+async function fetchKlinesUncached({ secid, days, fields2, forcePush2hisIp }) {
   const url =
     `${EASTMONEY_FLOW_URL}` +
     `?secid=${secid}` +
@@ -493,7 +534,12 @@ async function fetchKlinesUncached({ secid, days, fields2 }) {
     `&fields1=f1,f2` +
     `&fields2=${fields2}`;
 
-  const { res, text } = await fetchEastmoneyText(url, { secid, kind: 'flow', fields2 });
+  const { res, text } = await fetchEastmoneyText(url, {
+    secid,
+    kind: 'flow',
+    fields2,
+    forcePush2hisIp,
+  });
 
   if (!res.ok) {
     logEastmoneyError('fetchKlines HTTP error', {
@@ -548,6 +594,77 @@ async function fetchKlinesUncached({ secid, days, fields2 }) {
     }
     return parts.map(Number);
   });
+}
+
+/**
+ * Uncached fflow/kline/get with fields2=f51 only (same path as production flow dates).
+ * Bypasses EASTMONEY_CACHE_TTL_MS. For sustained-load probes (see scripts/probe-eastmoney-flow-sustained.mjs).
+ * @param {string} code e.g. "600519"
+ * @param {number} [days=25]
+ */
+export async function probeEastmoneyFlowF51Uncached(code, days = 25) {
+  const secid = normalizeSecId(String(code ?? '').trim());
+  const n = Math.max(1, Number(days) || 25);
+  return fetchKlinesUncached({ secid, days: n, fields2: 'f51' });
+}
+
+/**
+ * Uncached f51 flow to a specific pool IP (does not advance round_robin stripe counter).
+ * @param {string} ip must appear in EASTMONEY_PUSH2HIS_IPS
+ */
+export async function probeEastmoneyFlowF51UncachedOnIp(code, days, ip) {
+  const secid = normalizeSecId(String(code ?? '').trim());
+  const n = Math.max(1, Number(days) || 25);
+  return fetchKlinesUncached({
+    secid,
+    days: n,
+    fields2: 'f51',
+    forcePush2hisIp: String(ip).trim(),
+  });
+}
+
+/** Reset stripe counter for repeatable round_robin probes. */
+export function resetEastmoneyPush2hisStripeCounterForProbe() {
+  eastmoneyPush2hisStripeSeq = 0;
+}
+
+/** Last TCP dial target from undici connector (log aid for probes). */
+export function peekEastmoneyLastTcpDialHost() {
+  return eastmoneyLastTcpDialHost;
+}
+
+/**
+ * Which push2his pool IP production would dial for this stock code (hash-pinned per secid).
+ * @param {string} code e.g. "600519"
+ */
+export function previewEastmoneyFlowDialForCode(code) {
+  const secid = normalizeSecId(String(code ?? '').trim());
+  return {
+    secid,
+    pool: parseEastmoneyPush2hisIpsFromEnv(),
+    tcpDialIp: previewNextEastmoneyPush2hisIp(secid),
+  };
+}
+
+/**
+ * Tear down undici agents (base + per-IP + script) so the next request opens fresh connections.
+ * Does not clear IP health or global cooldown — use only in probe scripts.
+ */
+export async function resetEastmoneyNetworkStateForProbe() {
+  const agents = [...eastmoneyIpAgents.values()];
+  eastmoneyIpAgents.clear();
+  for (const agent of agents) {
+    try {
+      if (typeof agent?.destroy === 'function') {
+        await agent.destroy();
+      } else if (typeof agent?.close === 'function') {
+        await agent.close();
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  await resetEastmoneyAgent(new Error('probe reset'), {});
 }
 
 async function fetchDailyMarketData(args) {
@@ -621,10 +738,10 @@ async function fetchDailyMarketDataViaUndici({ secid, days }) {
 
 async function fetchDailyMarketDataViaBrowser({ secid, days }) {
   try {
-    logEastmoneyError('fetchDailyMarketData falling back to browser JSONP', {
-      secid,
-      days,
-    });
+    // logEastmoneyError('fetchDailyMarketData falling back to browser JSONP', {
+    //   secid,
+    //   days,
+    // });
     return await fetchEastmoneyDailyKlinesViaBrowser(secid, days);
   } catch (err) {
     logEastmoneyError('fetchDailyMarketData browser fallback failed (returning empty)', {
@@ -674,6 +791,9 @@ async function fetchEastmoneyText(url, context = {}, init) {
     },
   };
 
+  /** One pick per logical request; retries reuse same pool IP (needed for round_robin stripe). */
+  const push2hisIpPinRef = { ip: undefined };
+
   let lastErr;
   for (let attempt = 1; attempt <= EASTMONEY_FETCH_RETRIES; attempt++) {
     const startedAt = Date.now();
@@ -685,6 +805,8 @@ async function fetchEastmoneyText(url, context = {}, init) {
           attempt,
           kind: requestLabel,
           url,
+          forcePush2hisIp: context.forcePush2hisIp,
+          push2hisIpPinRef,
         })
       );
       const { res, selectedIp, tcpDialHost } = responseContext;
@@ -747,6 +869,8 @@ async function fetchEastmoneyText(url, context = {}, init) {
           kind: requestLabel,
           url,
           ...eastmoneyTcpDialLogFields(),
+          failedIp: err?.detail?.selectedIp ?? null,
+          nextIpCandidate: previewNextEastmoneyPush2hisIp(secid),
           attempt,
           maxAttempts: EASTMONEY_FETCH_RETRIES,
           waitMs,
@@ -840,8 +964,23 @@ async function eastmoneyHttpFetch(url, init, context = {}) {
   const proxyUrl = proxyConfig.httpsProxy || proxyConfig.httpProxy;
   const secid = secidFromEastmoneyUrl(url);
   const shouldUsePush2hisIpPool = shouldUseEastmoneyPush2hisIpPool(url, context);
-  const selectedIp =
-    proxyUrl || !shouldUsePush2hisIpPool ? null : pickEastmoneyPush2hisIp(secid);
+  const poolList = parseEastmoneyPush2hisIpsFromEnv();
+  const forcedIp =
+    typeof context.forcePush2hisIp === 'string' && context.forcePush2hisIp.trim()
+      ? context.forcePush2hisIp.trim()
+      : '';
+  const pinRef = context.push2hisIpPinRef;
+  let selectedIp = null;
+  if (!proxyUrl && shouldUsePush2hisIpPool) {
+    if (forcedIp && poolList.includes(forcedIp)) {
+      selectedIp = forcedIp;
+    } else if (pinRef && pinRef.ip !== undefined) {
+      selectedIp = pinRef.ip;
+    } else {
+      selectedIp = pickEastmoneyPush2hisIp(secid);
+      if (pinRef) pinRef.ip = selectedIp;
+    }
+  }
 
   if (process.env.EASTMONEY_DISABLE_UNDICI === '1') {
     if (push2hisIpsConfigured && !warnedPush2hisIpsWithoutUndici) {
@@ -927,7 +1066,7 @@ async function eastmoneyHttpFetch(url, init, context = {}) {
 function createEastmoneyDispatcher(undiciMod, { proxyConfig, proxyUrl }) {
   const connections = Math.max(
     1,
-    Number.parseInt(String(process.env.EASTMONEY_MAX_CONNECTIONS || '6'), 10) || 6
+    Number.parseInt(String(process.env.EASTMONEY_MAX_CONNECTIONS || '1'), 10) || 1
   );
   const allowH2 = eastmoneyAllowH2(Boolean(proxyUrl));
   const commonOpts = {
@@ -1496,10 +1635,4 @@ function normalizeSecId(code) {
 
 function toMillion(value) {
   return Number((value / 1_000_000).toFixed(3));
-}
-
-function toMillionOrNull(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return null;
-  return toMillion(n);
 }

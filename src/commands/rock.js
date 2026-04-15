@@ -10,7 +10,7 @@ const DEFAULT_MIN_TURNOVER = getDefaultAnalysisConfig().minTurnover;
 const DEFAULT_SOURCE = (process.env.ROCK_DATA_SOURCE || 'eastmoney').toLowerCase();
 const ROCK_DOWNLOAD_CONCURRENCY = Math.max(
   1,
-  Number.parseInt(String(process.env.ROCK_DOWNLOAD_CONCURRENCY || '3'), 10) || 3
+  Number.parseInt(String(process.env.ROCK_DOWNLOAD_CONCURRENCY || '1'), 10) || 1
 );
 const DATA_SOURCE_MAP = {
   eastmoney: eastmoneyFlow,
@@ -149,7 +149,7 @@ export const rockCommand = new Command('rock')
  */
 async function fetchBatchForAdapter(adapter, codes, opts) {
   const list = Array.isArray(codes) ? codes : [];
-  const concurrency = Math.max(1, Number(opts?.concurrency) || 3);
+  const concurrency = Math.max(1, Number(opts?.concurrency) || ROCK_DOWNLOAD_CONCURRENCY);
   if (typeof adapter.fetchDailyFundFlowBatch === 'function') {
     return adapter.fetchDailyFundFlowBatch(list, undefined, { concurrency });
   }
@@ -160,7 +160,7 @@ async function fetchBatchForAdapter(adapter, codes, opts) {
 
 async function fetchDailyFundFlowBatchGeneric(fetchOne, codes, opts) {
   const list = Array.isArray(codes) ? codes : [];
-  const concurrency = Math.max(1, Number(opts?.concurrency) || 3);
+  const concurrency = Math.max(1, Number(opts?.concurrency) || ROCK_DOWNLOAD_CONCURRENCY);
   const results = new Array(list.length);
   let nextIndex = 0;
 

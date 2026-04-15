@@ -1,0 +1,266 @@
+
+> rockbot@1.0.0 probe:eastmoney:flow:rr-stripe
+> node scripts/probe-eastmoney-flow-rr-stripe.mjs --iter 24 --stripe 3 --code 601179
+
+[dotenv@17.3.1] injecting env (25) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+{
+  "mode": "round_robin",
+  "stripe": 3,
+  "pool": [
+    "101.226.30.221",
+    "117.184.38.143",
+    "120.79.243.12",
+    "117.184.40.129"
+  ],
+  "code": "601179",
+  "warm": [
+    {
+      "ip": "101.226.30.221",
+      "ok": true,
+      "rows": 25,
+      "dial": "101.226.30.221",
+      "ms": 5805
+    },
+    {
+      "ip": "117.184.38.143",
+      "ok": false,
+      "dial": "117.184.38.143",
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 9060
+    },
+    {
+      "ip": "120.79.243.12",
+      "ok": false,
+      "dial": "120.79.243.12",
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 8309
+    },
+    {
+      "ip": "117.184.40.129",
+      "ok": true,
+      "rows": 25,
+      "dial": "117.184.40.129",
+      "ms": 8701
+    }
+  ],
+  "main": [
+    {
+      "i": 1,
+      "expectedIp": "101.226.30.221",
+      "dial": "101.226.30.221",
+      "ok": true,
+      "rows": 25,
+      "ms": 4890
+    },
+    {
+      "i": 2,
+      "expectedIp": "101.226.30.221",
+      "dial": "101.226.30.221",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 9268
+    },
+    {
+      "i": 3,
+      "expectedIp": "117.184.40.129",
+      "dial": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 8565
+    },
+    {
+      "i": 4,
+      "expectedIp": "117.184.38.143",
+      "dial": "117.184.38.143",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 10055
+    },
+    {
+      "i": 5,
+      "expectedIp": "117.184.38.143",
+      "dial": "117.184.38.143",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 10735
+    },
+    {
+      "i": 6,
+      "expectedIp": "117.184.38.143",
+      "dial": "117.184.38.143",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 10308
+    },
+    {
+      "i": 7,
+      "expectedIp": "120.79.243.12",
+      "dial": "120.79.243.12",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 7235
+    },
+    {
+      "i": 8,
+      "expectedIp": "120.79.243.12",
+      "dial": "120.79.243.12",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 6661
+    },
+    {
+      "i": 9,
+      "expectedIp": "120.79.243.12",
+      "dial": "120.79.243.12",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 10357
+    },
+    {
+      "i": 10,
+      "expectedIp": "117.184.40.129",
+      "dial": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 8281
+    },
+    {
+      "i": 11,
+      "expectedIp": "117.184.40.129",
+      "dial": "117.184.40.129",
+      "ok": true,
+      "rows": 25,
+      "ms": 9000
+    },
+    {
+      "i": 12,
+      "expectedIp": "117.184.40.129",
+      "dial": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 9295
+    },
+    {
+      "i": 13,
+      "expectedIp": "101.226.30.221",
+      "dial": "101.226.30.221",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 9655
+    },
+    {
+      "i": 14,
+      "expectedIp": "101.226.30.221",
+      "dial": "101.226.30.221",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 10017
+    },
+    {
+      "i": 15,
+      "expectedIp": "101.226.30.221",
+      "dial": "101.226.30.221",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 7046
+    },
+    {
+      "i": 16,
+      "expectedIp": "117.184.38.143",
+      "dial": "117.184.38.143",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 6440
+    },
+    {
+      "i": 17,
+      "expectedIp": "117.184.38.143",
+      "dial": "117.184.38.143",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 8156
+    },
+    {
+      "i": 18,
+      "expectedIp": "117.184.38.143",
+      "dial": "117.184.38.143",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 8847
+    },
+    {
+      "i": 19,
+      "expectedIp": "120.79.243.12",
+      "dial": "120.79.243.12",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 8973
+    },
+    {
+      "i": 20,
+      "expectedIp": "120.79.243.12",
+      "dial": "120.79.243.12",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 8423
+    },
+    {
+      "i": 21,
+      "expectedIp": "120.79.243.12",
+      "dial": "120.79.243.12",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 8281
+    },
+    {
+      "i": 22,
+      "expectedIp": "117.184.40.129",
+      "dial": "117.184.40.129",
+      "ok": true,
+      "rows": 25,
+      "ms": 8550
+    },
+    {
+      "i": 23,
+      "expectedIp": "117.184.40.129",
+      "dial": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 9526
+    },
+    {
+      "i": 24,
+      "expectedIp": "117.184.40.129",
+      "dial": "117.184.40.129",
+      "ok": false,
+      "message": "fetch failed",
+      "causeCode": "UND_ERR_SOCKET",
+      "ms": 8420
+    }
+  ],
+  "ok": 3,
+  "fail": 21,
+  "finishedAt": "2026-04-10T02:53:15.291Z"
+}

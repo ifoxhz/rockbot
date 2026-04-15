@@ -1,0 +1,71 @@
+[eastmoneyBrowserClient] flow retry attempt {
+  secid: '0.300040',
+  attempt: 1,
+  maxAttempts: 6,
+  resolveIp: '117.184.40.129',
+  domain: 'push2his.eastmoney.com',
+  fields2: 'f51,f52,f53,f54,f55,f56,f57,f58'
+}
+[eastmoneyBrowserClient] chromium.launch {
+  executablePath: '/home/yong/.cache/ms-playwright/chromium-1217/chrome-linux64/chrome',
+  headless: true,
+  args: [
+    '--host-resolver-rules=MAP push2his.eastmoney.com 117.184.40.129,EXCLUDE localhost'
+  ],
+  resolverIpOverride: '117.184.40.129'
+}
+[eastmoneyBrowserClient] kline retry attempt {
+  secid: '0.300040',
+  attempt: 1,
+  maxAttempts: 6,
+  resolveIp: '117.184.40.129',
+  domain: 'push2his.eastmoney.com'
+}
+[eastmoneyBrowserClient] chromium.launch {
+  executablePath: '/home/yong/.cache/ms-playwright/chromium-1217/chrome-linux64/chrome',
+  headless: true,
+  args: [
+    '--host-resolver-rules=MAP push2his.eastmoney.com 117.184.40.129,EXCLUDE localhost'
+  ],
+  resolverIpOverride: '117.184.40.129'
+}
+[eastmoneyBrowserClient] flow retry attempt {
+  secid: '0.300041',
+  attempt: 1,
+  maxAttempts: 6,
+  resolveIp: '101.226.30.221',
+  domain: 'push2his.eastmoney.com',
+  fields2: 'f51,f52,f53,f54,f55,f56,f57,f58'
+}
+[eastmoneyBrowserClient] chromium.launch {
+  executablePath: '/home/yong/.cache/ms-playwright/chromium-1217/chrome-linux64/chrome',
+  headless: true,
+  args: [
+    '--host-resolver-rules=MAP push2his.eastmoney.com 101.226.30.221,EXCLUDE localhost'
+  ],
+  resolverIpOverride: '101.226.30.221'
+}
+[eastmoneyBrowserClient] kline retry attempt {
+  secid: '0.300041',
+  attempt: 1,
+  maxAttempts: 6,
+  resolveIp: '101.226.30.221',
+  domain: 'push2his.eastmoney.com'
+}
+[eastmoneyBrowserClient] chromium.launch {
+  executablePath: '/home/yong/.cache/ms-playwright/chromium-1217/chrome-linux64/chrome',
+  headless: true,
+  args: [
+    '--host-resolver-rules=MAP push2his.eastmoney.com 101.226.30.221,EXCLUDE localhost'
+  ],
+  resolverIpOverride: '101.226.30.221'
+}
+{
+  "status": "error",
+  "errors": [
+    {
+      "code": "email",
+      "error": "RESEND_API_KEY is required"
+    }
+  ]
+}

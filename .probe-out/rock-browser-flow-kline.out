@@ -1,0 +1,12 @@
+[dotenv@17.3.1] injecting env (26) from .env -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+
+Matched results: (none)
+{
+  "status": "ok",
+  "total": 2,
+  "matched_count": 0,
+  "matched_codes": [],
+  "download_date": "2026-04-10",
+  "min_turnover": 4,
+  "data_source": "eastmoney"
+}

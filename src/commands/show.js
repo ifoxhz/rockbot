@@ -55,6 +55,11 @@ function printAlternatingTable(rows) {
     const color = i % 2 === 0 ? ANSI_YELLOW : ANSI_GREEN;
     process.stdout.write(`${color}${line}${ANSI_RESET}\n`);
   }
+
+  const statsLine = formatSizeOrderStatsLine(rows);
+  if (statsLine) {
+    process.stdout.write(`${statsLine}\n`);
+  }
 }
 
 function collectColumns(rows) {
@@ -89,4 +94,30 @@ function stringifyCell(value) {
 
 function pad(value, width) {
   return String(value).padEnd(width, ' ');
+}
+
+function formatSizeOrderStatsLine(rows) {
+  const fields = ['small', 'medium', 'large', 'extra_large'];
+  const stats = [];
+
+  for (const field of fields) {
+    let sum = 0;
+    let hasNumber = false;
+    for (const row of rows) {
+      const value = Number(row?.[field]);
+      if (!Number.isFinite(value)) {
+        continue;
+      }
+      sum += value;
+      hasNumber = true;
+    }
+    if (hasNumber) {
+      stats.push(`${field}_sum=${stringifyCell(sum)}`);
+    }
+  }
+
+  if (stats.length === 0) {
+    return '';
+  }
+  return `stats | ${stats.join(' | ')}`;
 }
