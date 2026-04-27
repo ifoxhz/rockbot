@@ -16,6 +16,17 @@ export function startShowlineServer({ port = 7070, defaultDate = null } = {}) {
   const hotrankDb = createSqliteClient(hotrankDbPath);
   initHotrankSchema(hotrankDb);
 
+  app.get('/showline/hotrank/top-trend', (_req, res) => {
+    const html = renderHotrankTopTrendPage();
+    res.send(html);
+  });
+
+  app.get('/showline/hotrank/:tsCode', (req, res) => {
+    const tsCode = normalizeTsCode(req.params.tsCode);
+    const html = renderHotrankTrendPage({ tsCode });
+    res.send(html);
+  });
+
   app.get('/showline/:code', (req, res) => {
     const code = req.params.code;
     const date = normalizeDateInput(req.query.date) || normalizeDateInput(defaultDate);
@@ -67,6 +78,40 @@ export function startShowlineServer({ port = 7070, defaultDate = null } = {}) {
         LIMIT ${limit}
       `);
       res.json({ ts_code: tsCode, rows });
+    } catch (err) {
+      res.status(500).json({ error: err?.message || String(err) });
+    }
+  });
+
+  app.get('/api/showline/hotrank/trend/:tsCode', (req, res) => {
+    try {
+      const tsCode = normalizeTsCode(req.params.tsCode);
+      const windowSize = normalizeWindow(req.query.window);
+      const offset = normalizeOffset(req.query.offset);
+      const payload = buildHotrankTrendPayload({
+        db: hotrankDb,
+        tsCode,
+        windowSize,
+        offset,
+      });
+      res.json(payload);
+    } catch (err) {
+      res.status(500).json({ error: err?.message || String(err) });
+    }
+  });
+
+  app.get('/api/showline/hotrank/top-trend', (req, res) => {
+    try {
+      const windowDays = normalizePositiveInt(req.query.window, 25);
+      const limit = normalizePositiveInt(req.query.limit, 10);
+      const debug = String(req.query.debug || '').trim() === '1';
+      const payload = buildHotrankTopTrendPayload({
+        db: hotrankDb,
+        windowDays,
+        limit,
+        debug,
+      });
+      res.json(payload);
     } catch (err) {
       res.status(500).json({ error: err?.message || String(err) });
     }
@@ -314,6 +359,292 @@ function normalizeTsCode(raw) {
   return s;
 }
 
+function buildHotrankTrendPayload({ db, tsCode, windowSize, offset }) {
+  const rows = db.queryAll(`
+    SELECT trade_date, capture_time, rank_no, score, price, pct_chg, stock_name
+    FROM hot_rank_snapshot
+    WHERE stock_code = ${db.quote(tsCode)}
+      AND rank_no IS NOT NULL
+    ORDER BY capture_time ASC
+    LIMIT 1000
+  `);
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return {
+      ts_code: tsCode,
+      stock_name: '',
+      total_rows: 0,
+      available_windows: WINDOW_OPTIONS,
+      window_size: windowSize,
+      offset: 0,
+      max_offset: 0,
+      rows: [],
+      series: {},
+      metrics: {},
+    };
+  }
+
+  const maxOffset = Math.max(0, rows.length - windowSize);
+  const safeOffset = Math.min(Math.max(0, offset), maxOffset);
+  const endExclusive = rows.length - safeOffset;
+  const start = Math.max(0, endExclusive - windowSize);
+  const windowRows = rows.slice(start, endExclusive);
+  const rankSeries = windowRows.map((row) => {
+    const n = Number(row.rank_no);
+    return Number.isFinite(n) ? n : null;
+  });
+  const scoreSeries = windowRows.map((row) => {
+    const n = Number(row.score);
+    return Number.isFinite(n) ? n : null;
+  });
+  const rankTrend = buildTrendLine(rankSeries);
+  const validRanks = rankSeries.filter(Number.isFinite);
+  const avgRank =
+    validRanks.length > 0 ? validRanks.reduce((sum, value) => sum + value, 0) / validRanks.length : null;
+  const bestRank = validRanks.length > 0 ? Math.min(...validRanks) : null;
+
+  return {
+    ts_code: tsCode,
+    stock_name: String(windowRows[windowRows.length - 1]?.stock_name || ''),
+    total_rows: rows.length,
+    available_windows: WINDOW_OPTIONS,
+    window_size: windowSize,
+    offset: safeOffset,
+    max_offset: maxOffset,
+    start_index: start,
+    end_index: endExclusive - 1,
+    rows: windowRows,
+    series: {
+      labels: windowRows.map((row) => formatHotrankLabel(row.capture_time)),
+      rank: rankSeries,
+      rank_trend: rankTrend.line,
+      score: scoreSeries,
+      price: windowRows.map((row) => toFiniteOrNull(row.price)),
+      pct_chg: windowRows.map((row) => toFiniteOrNull(row.pct_chg)),
+    },
+    metrics: {
+      rank_slope: Number(rankTrend.slope.toFixed(6)),
+      avg_rank: avgRank != null ? Number(avgRank.toFixed(3)) : null,
+      best_rank: bestRank,
+      latest_rank: validRanks.length > 0 ? validRanks[validRanks.length - 1] : null,
+    },
+  };
+}
+
+function formatHotrankLabel(captureTime) {
+  const s = String(captureTime || '');
+  if (!s) return '';
+  if (s.includes('T')) return s.slice(5, 16).replace('T', ' ');
+  return s.slice(5, 16);
+}
+
+function toFiniteOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizePositiveInt(value, fallback) {
+  const n = Number.parseInt(String(value || ''), 10);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return n;
+}
+
+function buildHotrankTopTrendPayload({ db, windowDays, limit, debug = false }) {
+  const totalSnapshotRows = Number(
+    db.queryOne(`SELECT COUNT(*) AS cnt FROM hot_rank_snapshot`)?.cnt || 0
+  );
+  const totalDistinctDates = Number(
+    db.queryOne(`SELECT COUNT(DISTINCT trade_date) AS cnt FROM hot_rank_snapshot`)?.cnt || 0
+  );
+
+  const dateRows = db.queryAll(`
+    SELECT DISTINCT trade_date
+    FROM hot_rank_snapshot
+    ORDER BY trade_date DESC
+    LIMIT ${Math.max(1, windowDays)}
+  `);
+  const selectedDatesDesc = dateRows.map((row) => String(row.trade_date || '')).filter(Boolean);
+  const selectedDates = [...selectedDatesDesc].reverse();
+  if (selectedDates.length === 0) {
+    const emptyPayload = {
+      window_days: windowDays,
+      limit,
+      dates: [],
+      rows: [],
+      diagnostics: {
+        total_snapshot_rows: totalSnapshotRows,
+        total_distinct_trade_dates: totalDistinctDates,
+        selected_trade_dates: 0,
+        candidate_stocks: 0,
+        regressable_stocks: 0,
+        reason: 'hot_rank_snapshot has no data',
+      },
+    };
+    if (debug || process.env.HOTRANK_DEBUG === '1') {
+      console.error('[showline] hotrank top trend diagnostics', emptyPayload.diagnostics);
+    }
+    return emptyPayload;
+  }
+
+  const dateInList = selectedDates.map((date) => db.quote(date)).join(',');
+  const rawRows = db.queryAll(`
+    SELECT
+      stock_code,
+      MAX(stock_name) AS stock_name,
+      trade_date,
+      MIN(rank_no) AS rank_no,
+      MAX(score) AS score
+    FROM hot_rank_snapshot
+    WHERE trade_date IN (${dateInList})
+      AND rank_no IS NOT NULL
+    GROUP BY stock_code, trade_date
+    ORDER BY stock_code ASC, trade_date ASC
+  `);
+
+  const dateIndex = new Map(selectedDates.map((date, index) => [date, index]));
+  const grouped = new Map();
+  for (const row of rawRows) {
+    const code = String(row.stock_code || '').trim();
+    if (!code) continue;
+    if (!grouped.has(code)) {
+      grouped.set(code, {
+        stock_code: code,
+        stock_name: String(row.stock_name || '').trim(),
+        byDate: new Map(),
+      });
+    }
+    grouped.get(code).byDate.set(String(row.trade_date), {
+      rank_no: toFiniteOrNull(row.rank_no),
+      score: toFiniteOrNull(row.score),
+    });
+  }
+
+  const metrics = [];
+  let regressableCount = 0;
+  let completeScoreCount = 0;
+  for (const item of grouped.values()) {
+    const rankPoints = [];
+    const rankSeries = [];
+    const scoreSeries = [];
+    for (const date of selectedDates) {
+      const row = item.byDate.get(date);
+      if (!row || !Number.isFinite(row.rank_no)) {
+        rankSeries.push(null);
+        scoreSeries.push(null);
+        continue;
+      }
+      const x = dateIndex.get(date);
+      rankPoints.push({ x, y: row.rank_no });
+      rankSeries.push(row.rank_no);
+      scoreSeries.push(Number.isFinite(row.score) ? row.score : null);
+    }
+    if (rankPoints.length < 3) {
+      continue;
+    }
+    regressableCount += 1;
+    const rankSlope = linearRegressionSlopeFromPoints(rankPoints);
+    if (!Number.isFinite(rankSlope)) continue;
+
+    const validRanks = rankSeries.filter(Number.isFinite);
+    const firstRank = validRanks[0];
+    const latestRank = validRanks[validRanks.length - 1];
+    const rankChange = Number.isFinite(firstRank) && Number.isFinite(latestRank) ? firstRank - latestRank : null;
+    const trend5 = computeHeatTrendFromRankSeries(rankSeries, 5);
+    const trend10 = computeHeatTrendFromRankSeries(rankSeries, 10);
+    const trend25 = computeHeatTrendFromRankSeries(rankSeries, 25);
+    if (![trend5, trend10, trend25].every((v) => Number.isFinite(v))) {
+      continue;
+    }
+    completeScoreCount += 1;
+    const trendScore = 0.5 * trend5 + 0.3 * trend10 + 0.2 * trend25;
+
+    metrics.push({
+      stock_code: item.stock_code,
+      stock_name: item.stock_name,
+      points: rankPoints.length,
+      rank_slope: Number(rankSlope.toFixed(6)),
+      trend_5: Number(trend5.toFixed(6)),
+      trend_10: Number(trend10.toFixed(6)),
+      trend_25: Number(trend25.toFixed(6)),
+      trend_score: Number(trendScore.toFixed(6)),
+      latest_rank: latestRank,
+      first_rank: firstRank,
+      rank_change: rankChange != null ? Number(rankChange.toFixed(3)) : null,
+      avg_rank: Number((validRanks.reduce((sum, value) => sum + value, 0) / validRanks.length).toFixed(3)),
+      rank_series: rankSeries,
+      score_series: scoreSeries,
+    });
+  }
+
+  metrics.sort((a, b) => {
+    if (b.trend_score !== a.trend_score) return b.trend_score - a.trend_score;
+    if ((b.rank_change ?? -Infinity) !== (a.rank_change ?? -Infinity)) {
+      return (b.rank_change ?? -Infinity) - (a.rank_change ?? -Infinity);
+    }
+    return (a.latest_rank ?? Infinity) - (b.latest_rank ?? Infinity);
+  });
+
+  const payload = {
+    window_days: windowDays,
+    limit,
+    dates: selectedDates,
+    rows: metrics.slice(0, Math.max(1, limit)),
+    diagnostics: {
+      total_snapshot_rows: totalSnapshotRows,
+      total_distinct_trade_dates: totalDistinctDates,
+      selected_trade_dates: selectedDates.length,
+      candidate_stocks: grouped.size,
+      regressable_stocks: regressableCount,
+      complete_score_stocks: completeScoreCount,
+      ranked_stocks: metrics.length,
+      reason:
+        metrics.length > 0
+          ? 'ok'
+          : 'no stock has enough valid points to compute trend_5/10/25 score',
+    },
+  };
+  if (debug || process.env.HOTRANK_DEBUG === '1') {
+    console.error('[showline] hotrank top trend diagnostics', payload.diagnostics);
+  }
+  return payload;
+}
+
+function linearRegressionSlopeFromPoints(points) {
+  const list = Array.isArray(points) ? points : [];
+  if (list.length < 2) return NaN;
+  let sumX = 0;
+  let sumY = 0;
+  let sumXX = 0;
+  let sumXY = 0;
+  for (const point of list) {
+    const x = Number(point?.x);
+    const y = Number(point?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return NaN;
+    sumX += x;
+    sumY += y;
+    sumXX += x * x;
+    sumXY += x * y;
+  }
+  const n = list.length;
+  const denominator = n * sumXX - sumX * sumX;
+  if (denominator === 0) return NaN;
+  return (n * sumXY - sumX * sumY) / denominator;
+}
+
+function computeHeatTrendFromRankSeries(rankSeries, windowDays) {
+  const series = Array.isArray(rankSeries) ? rankSeries : [];
+  const n = Math.max(1, Number(windowDays) || 1);
+  const sliced = series.slice(-n);
+  const points = [];
+  for (let i = 0; i < sliced.length; i += 1) {
+    const rank = Number(sliced[i]);
+    if (!Number.isFinite(rank)) continue;
+    // rank 越小越热，所以热度趋势用 -rank 的斜率表示“上升速度”
+    points.push({ x: i, y: -rank });
+  }
+  if (points.length < 3) return NaN;
+  return linearRegressionSlopeFromPoints(points);
+}
+
 function renderTrendPage({ code, date }) {
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -485,6 +816,266 @@ function renderTrendPage({ code, date }) {
       refresh();
     });
 
+    refresh();
+  </script>
+</body>
+</html>`;
+}
+
+function renderHotrankTrendPage({ tsCode }) {
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>${tsCode} hotrank</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; color: #222; }
+    .wrap { max-width: 1100px; margin: 0 auto; }
+    .toolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+    .metric { font-size: 13px; color: #444; margin: 4px 0; }
+    input[type="range"] { width: 240px; }
+    pre { background: #f8f8f8; padding: 8px; border-radius: 6px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2 id="title">${tsCode} Hotrank 趋势</h2>
+    <div class="toolbar">
+      <label>窗口:
+        <select id="windowSelect">
+          <option value="5">5点</option>
+          <option value="10">10点</option>
+          <option value="15">15点</option>
+          <option value="20">20点</option>
+          <option value="25" selected>25点</option>
+        </select>
+      </label>
+      <label>滑动:
+        <input id="offsetRange" type="range" min="0" max="0" value="0" step="1" />
+        <span id="offsetText">0</span>
+      </label>
+      <button id="refreshBtn">刷新</button>
+    </div>
+    <div class="metric" id="metricText"></div>
+    <canvas id="chart" height="120"></canvas>
+    <h3>最新信号</h3>
+    <pre id="signalBox">-</pre>
+  </div>
+  <script>
+    const tsCode = ${JSON.stringify(tsCode)};
+    let chart = null;
+    const elWindow = document.getElementById('windowSelect');
+    const elOffset = document.getElementById('offsetRange');
+    const elOffsetText = document.getElementById('offsetText');
+    const elMetric = document.getElementById('metricText');
+    const signalBox = document.getElementById('signalBox');
+
+    async function refresh() {
+      const query = new URLSearchParams();
+      query.set('window', String(Number(elWindow.value)));
+      query.set('offset', String(Number(elOffset.value || 0)));
+      const trendRes = await fetch('/api/showline/hotrank/trend/' + encodeURIComponent(tsCode) + '?' + query.toString());
+      const trend = await trendRes.json();
+      if (trend.error) {
+        alert(trend.error);
+        return;
+      }
+      elOffset.max = String(trend.max_offset || 0);
+      if (Number(elOffset.value) > Number(elOffset.max)) {
+        elOffset.value = elOffset.max;
+      }
+      elOffsetText.textContent = elOffset.value;
+      document.getElementById('title').textContent = (trend.stock_name ? (trend.stock_name + ' ') : '') + trend.ts_code + ' Hotrank 趋势';
+      elMetric.textContent =
+        '窗口=' + trend.window_size +
+        ', offset=' + trend.offset +
+        ', 最新排名=' + (trend.metrics.latest_rank ?? '-') +
+        ', 最佳排名=' + (trend.metrics.best_rank ?? '-') +
+        ', 平均排名=' + (trend.metrics.avg_rank ?? '-') +
+        ', 排名斜率=' + (trend.metrics.rank_slope ?? '-');
+      renderChart(trend);
+
+      const signalRes = await fetch('/api/showline/hotrank/signals/latest');
+      const signal = await signalRes.json();
+      const mine = Array.isArray(signal.rows) ? signal.rows.filter((row) => row.ts_code === tsCode) : [];
+      signalBox.textContent = JSON.stringify({ signal_time: signal.signal_time, rows: mine }, null, 2);
+    }
+
+    function renderChart(payload) {
+      const ctx = document.getElementById('chart').getContext('2d');
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: payload.series.labels,
+          datasets: [
+            { label: '排名(越小越热)', data: payload.series.rank, borderColor: '#e11d48', yAxisID: 'y' },
+            { label: '排名趋势', data: payload.series.rank_trend, borderColor: 'rgba(225,29,72,0.6)', borderDash: [6,6], pointRadius: 0, yAxisID: 'y' },
+            { label: '热度分', data: payload.series.score, borderColor: '#2563eb', yAxisID: 'y1' },
+            { label: '涨跌幅(%)', data: payload.series.pct_chg, borderColor: '#16a34a', yAxisID: 'y2' }
+          ],
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: 'index', intersect: false },
+          scales: {
+            y: {
+              position: 'left',
+              reverse: true,
+              suggestedMin: 1,
+              suggestedMax: 100
+            },
+            y1: {
+              position: 'right',
+              grid: { drawOnChartArea: false }
+            },
+            y2: {
+              position: 'right',
+              grid: { drawOnChartArea: false },
+              suggestedMin: -10,
+              suggestedMax: 10
+            }
+          },
+        },
+      });
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', refresh);
+    elWindow.addEventListener('change', () => {
+      elOffset.value = '0';
+      elOffsetText.textContent = '0';
+      refresh();
+    });
+    elOffset.addEventListener('input', () => {
+      elOffsetText.textContent = elOffset.value;
+      refresh();
+    });
+    refresh();
+  </script>
+</body>
+</html>`;
+}
+
+function renderHotrankTopTrendPage() {
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hotrank Top Trend</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; color: #222; }
+    .wrap { max-width: 1200px; margin: 0 auto; }
+    .toolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+    th { background: #f5f5f5; }
+    a { color: #2563eb; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2>Hotrank 趋势上升最快 Top10</h2>
+    <div class="toolbar">
+      <label>统计窗口(天):
+        <input id="windowInput" type="number" min="3" max="120" value="25" />
+      </label>
+      <label>TopN:
+        <input id="limitInput" type="number" min="1" max="50" value="10" />
+      </label>
+      <button id="refreshBtn">刷新</button>
+    </div>
+    <div id="metaText"></div>
+    <div id="diagText" style="font-size:12px;color:#666;margin:6px 0 10px 0;"></div>
+    <canvas id="barChart" height="120"></canvas>
+    <h3>明细</h3>
+    <table id="resultTable">
+      <thead>
+        <tr>
+          <th>#</th><th>股票</th><th>名称</th><th>score</th><th>trend_5</th><th>trend_10</th><th>trend_25</th><th>首日排名</th><th>最新排名</th><th>排名改善</th><th>平均排名</th><th>点数</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script>
+    let chart = null;
+    const elWindow = document.getElementById('windowInput');
+    const elLimit = document.getElementById('limitInput');
+    const tableBody = document.querySelector('#resultTable tbody');
+    const metaText = document.getElementById('metaText');
+    const diagText = document.getElementById('diagText');
+
+    async function refresh() {
+      const windowDays = Math.max(3, Number(elWindow.value) || 25);
+      const limit = Math.max(1, Number(elLimit.value) || 10);
+      const query = new URLSearchParams({ window: String(windowDays), limit: String(limit), debug: '1' });
+      const res = await fetch('/api/showline/hotrank/top-trend?' + query.toString());
+      const payload = await res.json();
+      if (payload.error) {
+        alert(payload.error);
+        return;
+      }
+      metaText.textContent = '日期范围: ' + (payload.dates?.[0] || '-') + ' ~ ' + (payload.dates?.[payload.dates.length - 1] || '-') +
+        ' | 样本天数=' + payload.dates.length + ' | 返回=' + payload.rows.length;
+      const d = payload.diagnostics || {};
+      diagText.textContent =
+        'diagnostics | total_rows=' + (d.total_snapshot_rows ?? '-') +
+        ' | distinct_dates=' + (d.total_distinct_trade_dates ?? '-') +
+        ' | selected_dates=' + (d.selected_trade_dates ?? '-') +
+        ' | candidate=' + (d.candidate_stocks ?? '-') +
+        ' | regressable=' + (d.regressable_stocks ?? '-') +
+        ' | complete_score=' + (d.complete_score_stocks ?? '-') +
+        ' | reason=' + (d.reason || '-');
+      renderChart(payload.rows);
+      renderTable(payload.rows);
+    }
+
+    function renderChart(rows) {
+      const ctx = document.getElementById('barChart').getContext('2d');
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: rows.map((row) => row.stock_code),
+          datasets: [
+            { label: 'score(0.5*trend_5 + 0.3*trend_10 + 0.2*trend_25)', data: rows.map((row) => row.trend_score), backgroundColor: '#e11d48' },
+            { label: 'trend_5', data: rows.map((row) => row.trend_5), backgroundColor: '#2563eb' },
+            { label: 'trend_10', data: rows.map((row) => row.trend_10), backgroundColor: '#16a34a' },
+            { label: 'trend_25', data: rows.map((row) => row.trend_25), backgroundColor: '#f59e0b' }
+          ]
+        },
+        options: { responsive: true }
+      });
+    }
+
+    function renderTable(rows) {
+      tableBody.innerHTML = '';
+      rows.forEach((row, index) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = [
+          index + 1,
+          '<a href="/showline/hotrank/' + encodeURIComponent(row.stock_code) + '" target="_blank">' + row.stock_code + '</a>',
+          row.stock_name || '',
+          row.trend_score ?? '',
+          row.trend_5 ?? '',
+          row.trend_10 ?? '',
+          row.trend_25 ?? '',
+          row.first_rank ?? '',
+          row.latest_rank ?? '',
+          row.rank_change ?? '',
+          row.avg_rank ?? '',
+          row.points ?? ''
+        ].map((value) => '<td>' + value + '</td>').join('');
+        tableBody.appendChild(tr);
+      });
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', refresh);
     refresh();
   </script>
 </body>

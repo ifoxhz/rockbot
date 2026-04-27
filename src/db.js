@@ -27,14 +27,18 @@ export function createSqliteClient(dbPath) {
     transaction(statements) {
       const list = Array.isArray(statements) ? statements : [];
       if (list.length === 0) return;
-      const script = ['BEGIN;'];
-      for (const statement of list) {
-        if (statement) {
-          script.push(statement.endsWith(';') ? statement : `${statement};`);
+      const chunkSize = 200;
+      for (let i = 0; i < list.length; i += chunkSize) {
+        const chunk = list.slice(i, i + chunkSize);
+        const script = ['BEGIN;'];
+        for (const statement of chunk) {
+          if (statement) {
+            script.push(statement.endsWith(';') ? statement : `${statement};`);
+          }
         }
+        script.push('COMMIT;');
+        execSqlite(filePath, script.join('\n'));
       }
-      script.push('COMMIT;');
-      execSqlite(filePath, script.join('\n'));
     },
     quote(value) {
       return quoteSql(value);

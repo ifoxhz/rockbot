@@ -37,6 +37,8 @@ export async function runHotrankPipeline(options = {}) {
       ((fetchOptions) =>
         source.getHotRank({
           ...fetchOptions,
+          backfillDays: options.backfillDays,
+          backfillTop: options.backfillTop,
           debug,
         })),
     debug,

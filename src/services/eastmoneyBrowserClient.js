@@ -471,6 +471,49 @@ export async function fetchEastmoneyHotRankViaBrowser(options = {}) {
   });
 }
 
+export async function fetchEastmoneyHotRankHistoryViaBrowser(srcSecurityCode, options = {}) {
+  if (!EASTMONEY_BROWSER_ENABLED) {
+    throw new Error('EASTMONEY_BROWSER_ENABLED=0');
+  }
+  const code = String(srcSecurityCode || '').trim().toUpperCase();
+  if (!/^(SH|SZ)\d{6}$/.test(code)) {
+    throw new Error(`Invalid srcSecurityCode: ${srcSecurityCode}`);
+  }
+
+  return withBrowserPage(async (page) => {
+    await page.goto('https://guba.eastmoney.com/rank/', {
+      waitUntil: 'domcontentloaded',
+      timeout: Math.max(EASTMONEY_BROWSER_TIMEOUT_MS, 30_000),
+    });
+    const apiUrl = 'https://emappdata.eastmoney.com/stockrank/getHisList';
+    const body = {
+      appId: 'appId01',
+      globalId: `hotrank-his-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+      srcSecurityCode: code,
+    };
+    const res = await page.context().request.post(apiUrl, {
+      data: body,
+      headers: {
+        'content-type': 'application/json',
+        referer: 'https://guba.eastmoney.com/rank/',
+        origin: 'https://guba.eastmoney.com',
+      },
+      timeout: Math.max(EASTMONEY_BROWSER_TIMEOUT_MS, 20_000),
+    });
+    if (!res.ok()) {
+      throw new Error(`Eastmoney hotrank history HTTP error: ${res.status()}`);
+    }
+    const json = await res.json();
+    const data = Array.isArray(json?.data) ? json.data : [];
+    return data
+      .map((item) => ({
+        trade_date: normalizeHistoryDate(item?.calcTime),
+        rank_no: toFiniteOrNull(item?.rank),
+      }))
+      .filter((item) => item.trade_date && Number.isFinite(item.rank_no));
+  });
+}
+
 async function fetchEastmoneyQuoteMapBySecids(page, secids, debug = false) {
   const out = new Map();
   const list = Array.isArray(secids) ? secids.filter(Boolean) : [];
@@ -768,4 +811,11 @@ function formatDate(date) {
   const mm = String(date.getMonth() + 1).padStart(2, '0');
   const dd = String(date.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function normalizeHistoryDate(value) {
+  const s = String(value || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  return '';
 }
