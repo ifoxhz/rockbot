@@ -386,6 +386,154 @@ export async function fetchEastmoneyRealtimeQuoteViaBrowser(secid) {
   });
 }
 
+export async function fetchEastmoneyHotRankViaBrowser(options = {}) {
+  if (!EASTMONEY_BROWSER_ENABLED) {
+    throw new Error('EASTMONEY_BROWSER_ENABLED=0');
+  }
+
+  const pageSize = Math.max(1, Math.min(200, Number(options.pageSize) || 100));
+  const pageNo = Math.max(1, Number(options.pageNo) || 1);
+  const marketType = String(options.marketType || '').trim();
+  const debug = options.debug === true || process.env.HOTRANK_DEBUG === '1';
+
+  return withBrowserPage(async (page) => {
+    await page.goto('https://guba.eastmoney.com/rank/', {
+      waitUntil: 'domcontentloaded',
+      timeout: Math.max(EASTMONEY_BROWSER_TIMEOUT_MS, 30_000),
+    });
+    await sleep(500);
+
+    const rankApi = 'https://emappdata.eastmoney.com/stockrank/getAllCurrentList';
+    const requestBody = {
+      appId: 'appId01',
+      globalId: `hotrank-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+      marketType,
+      pageNo,
+      pageSize,
+    };
+    const rankRes = await page.context().request.post(rankApi, {
+      data: requestBody,
+      headers: {
+        'content-type': 'application/json',
+        referer: 'https://guba.eastmoney.com/rank/',
+        origin: 'https://guba.eastmoney.com',
+      },
+      timeout: Math.max(EASTMONEY_BROWSER_TIMEOUT_MS, 20_000),
+    });
+    if (!rankRes.ok()) {
+      throw new Error(`Eastmoney hotrank HTTP error: ${rankRes.status()}`);
+    }
+
+    const rankJson = await rankRes.json();
+    const rankItems = Array.isArray(rankJson?.data) ? rankJson.data : [];
+    if (debug) {
+      console.error('[eastmoneyBrowserClient] hotrank list', {
+        total: rankItems.length,
+        pageNo,
+        pageSize,
+        marketType,
+      });
+      if (rankItems.length > 0) {
+        console.error('[eastmoneyBrowserClient] hotrank first item', rankItems[0]);
+      }
+    }
+    if (rankItems.length === 0) {
+      return [];
+    }
+
+    const rankRows = rankItems
+      .map((item) => {
+        const parsed = parseEastmoneyScCode(item?.sc);
+        if (!parsed) return null;
+        return { ...parsed, item };
+      })
+      .filter(Boolean);
+
+    const quoteMap = await fetchEastmoneyQuoteMapBySecids(page, rankRows.map((row) => row.secid), debug);
+    const tradeDate = formatDate(new Date());
+
+    return rankRows.map((row) => {
+      const item = row.item || {};
+      const quote = quoteMap.get(row.code) || {};
+      const rankNo = toFiniteOrNull(item.rk);
+      const scoreRaw = toFiniteOrNull(item.hot);
+      return {
+        trade_date: tradeDate,
+        stock_code: row.tsCode,
+        stock_name: quote.stock_name || '',
+        rank_no: rankNo,
+        rank_type: 'HOT',
+        score: Number.isFinite(scoreRaw) ? scoreRaw : rankNo != null ? 1000 - rankNo : null,
+        price: toFiniteOrNull(quote.price),
+        pct_chg: toFiniteOrNull(quote.pct_chg),
+      };
+    });
+  });
+}
+
+async function fetchEastmoneyQuoteMapBySecids(page, secids, debug = false) {
+  const out = new Map();
+  const list = Array.isArray(secids) ? secids.filter(Boolean) : [];
+  if (list.length === 0) return out;
+
+  const batchSize = 20;
+  const chunks = [];
+  for (let i = 0; i < list.length; i += batchSize) {
+    chunks.push(list.slice(i, i + batchSize));
+  }
+
+  for (const chunk of chunks) {
+    const result = await injectJsonp(
+      page,
+      (callbackName) =>
+        `https://push2.eastmoney.com/api/qt/ulist.np/get` +
+        `?fltt=2` +
+        `&np=3` +
+        `&ut=${encodeURIComponent(process.env.EASTMONEY_UT || EASTMONEY_DEFAULT_UT)}` +
+        `&invt=2` +
+        `&fields=f2,f3,f12,f13,f14,f152` +
+        `&secids=${encodeURIComponent(chunk.join(','))}` +
+        `&cb=${callbackName}` +
+        `&_=${Date.now()}`,
+      'jsonp_hotrank_quote'
+    );
+    if (!result?.ok) {
+      if (debug) {
+        console.error('[eastmoneyBrowserClient] hotrank quote jsonp failed', {
+          mode: result?.mode,
+          network: result?.networkResult,
+          targetUrl: result?.targetUrl,
+        });
+      }
+      continue;
+    }
+    const diff = result?.payload?.data?.diff;
+    if (!Array.isArray(diff)) continue;
+    for (const item of diff) {
+      const code = String(item?.f12 || '').trim();
+      if (!code) continue;
+      out.set(code, {
+        stock_name: String(item?.f14 || '').trim(),
+        price: toFiniteOrNull(item?.f2),
+        pct_chg: toFiniteOrNull(item?.f3),
+      });
+    }
+  }
+  return out;
+}
+
+function parseEastmoneyScCode(scRaw) {
+  const sc = String(scRaw || '').trim().toUpperCase();
+  if (!/^(SH|SZ)\d{6}$/.test(sc)) return null;
+  const market = sc.slice(0, 2);
+  const code = sc.slice(2);
+  return {
+    code,
+    tsCode: `${code}.${market}`,
+    secid: `${market === 'SH' ? '1' : '0'}.${code}`,
+  };
+}
+
 export async function fetchEastmoneyDailyKlinesViaBrowser(secid, days = 25) {
   if (!EASTMONEY_BROWSER_ENABLED) {
     throw new Error('EASTMONEY_BROWSER_ENABLED=0');
@@ -613,4 +761,11 @@ function simpleHash32(s) {
     h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
   }
   return h;
+}
+
+function formatDate(date) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }

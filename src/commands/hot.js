@@ -5,35 +5,59 @@ import { startHotrankServer } from '../app.js';
 export const hotCommand = new Command('hot')
   .description('Run one hotrank data collection job')
   .option('-d, --date <date>', 'trade date (YYYY-MM-DD or YYYYMMDD)')
+  .option('-s, --source <source>', 'hotrank source: tushare|eastmoney', 'tushare')
   .option('-m, --market <market>', 'market code used by tushare', 'A')
+  .option('--debug', 'print debug logs for hotrank pipeline', false)
   .action(async (options) => {
     const tradeDate = normalizeDate(options.date);
-    const result = await runHotrankPipeline({
-      tradeDate,
-      market: options.market,
-    });
-
     process.stdout.write(
-      `${JSON.stringify(
-        {
-          status: 'ok',
-          command: 'hot',
-          db_path: result.dbPath,
-          capture: result.capture,
-          features: {
-            calcTime: result.features.calcTime,
-            inserted: result.features.inserted,
-          },
-          signals: {
-            signalTime: result.strategy.signalTime,
-            inserted: result.strategy.inserted,
-            rows: result.strategy.signals,
-          },
-        },
-        null,
-        2
-      )}\n`
+      `[hot] start tradeDate=${tradeDate || '(latest)'} source=${options.source} market=${options.market} debug=${options.debug ? 'on' : 'off'}\n`
     );
+    try {
+      const result = await runHotrankPipeline({
+        tradeDate,
+        source: options.source,
+        market: options.market,
+        debug: options.debug,
+      });
+
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            status: 'ok',
+            command: 'hot',
+            source: result.source,
+            db_path: result.dbPath,
+            capture: result.capture,
+            features: {
+              calcTime: result.features.calcTime,
+              inserted: result.features.inserted,
+            },
+            signals: {
+              signalTime: result.strategy.signalTime,
+              inserted: result.strategy.inserted,
+              rows: result.strategy.signals,
+            },
+            table_counts: result.tableCounts,
+          },
+          null,
+          2
+        )}\n`
+      );
+    } catch (err) {
+      process.stderr.write(
+        `${JSON.stringify(
+          {
+            status: 'error',
+            command: 'hot',
+            message: err?.message || String(err),
+          },
+          null,
+          2
+        )}\n`
+      );
+      process.exitCode = 1;
+    }
   });
 
 hotCommand
