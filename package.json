@@ -5,10 +5,11 @@
   "description": "rockbot",
   "main": "index.js",
   "bin": {
-    "rockbot": "bin/cli.js"
+    "rockbot": "bin/cli.js",
+    "rackbot": "bin/cli.js"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test",
     "check:undici": "node scripts/check-undici.mjs",
     "probe:eastmoney": "node scripts/probe-eastmoney.mjs",
     "probe:eastmoney:kline": "node scripts/probe-eastmoney-kline.mjs",
@@ -24,7 +25,9 @@
     "probe:eastmoney:flow:sustained": "node scripts/probe-eastmoney-flow-sustained.mjs",
     "probe:eastmoney:flow:envelope": "node scripts/probe-eastmoney-flow-envelope.mjs",
     "probe:eastmoney:flow:rr-stripe": "node scripts/probe-eastmoney-flow-rr-stripe.mjs",
-    "probe:eastmoney:kline:turnover": "node scripts/probe-eastmoney-kline-turnover.mjs"
+    "probe:eastmoney:kline:turnover": "node scripts/probe-eastmoney-kline-turnover.mjs",
+    "hot": "node ./bin/cli.js hot",
+    "hot:serve": "node ./bin/cli.js hot serve"
   },
   "keywords": [],
   "author": "",

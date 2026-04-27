@@ -333,6 +333,50 @@ export function turnoverRateUptrend(minSlope = 0) {
 }
 
 // Hook / filter:
+// Normalized price position in N-day range:
+// position = (current_price - N_day_low) / (N_day_high - N_day_low)
+// Pass only when position is between minPosition and maxPosition.
+export function pricePositionInRange(nDays = 20, minPosition = 0.4, maxPosition = 0.6) {
+  return (ctx) => {
+    const rows = Array.isArray(ctx?.rows) ? ctx.rows : [];
+    if (rows.length === 0) return false;
+
+    const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date));
+    const windowRows = sorted.slice(-Math.max(1, Number(nDays) || 20));
+    if (windowRows.length === 0) return false;
+
+    const latest = windowRows[windowRows.length - 1];
+    const currentPrice = Number(latest?.close);
+    if (!Number.isFinite(currentPrice)) return false;
+
+    const highs = windowRows
+      .map((row) => Number(row?.high))
+      .filter((value) => Number.isFinite(value));
+    const lows = windowRows
+      .map((row) => Number(row?.low))
+      .filter((value) => Number.isFinite(value));
+
+    if (highs.length === 0 || lows.length === 0) return false;
+
+    const nDayHigh = Math.max(...highs);
+    const nDayLow = Math.min(...lows);
+    const denominator = nDayHigh - nDayLow;
+    if (denominator <= 0) return false;
+
+    const position = (currentPrice - nDayLow) / denominator;
+    const pass = position >= Number(minPosition) && position <= Number(maxPosition);
+
+    return {
+      pass,
+      output: {
+        price_position: Number(position.toFixed(4)),
+        price_position_days: windowRows.length,
+      },
+    };
+  };
+}
+
+// Hook / filter:
 // Compare aggregated net flow between small orders and extra-large orders.
 // Rules:
 // 1) extra_large > 0 and small > 0 => pass
@@ -382,8 +426,9 @@ export function buildStockFilters(config = {}) {
   const resolved = resolveAnalysisConfig(config);
   return [
     checkSmallNetBuyStreak(resolved.minStreakDays),
-    smallVsExtraLargeNetDominance(),
-    changePctStddev(2.5, 3.5),
+    // smallVsExtraLargeNetDominance(),
+    pricePositionInRange(20, 0.5, 0.9),
+    // changePctStddev(2.5, 3.5),
     // risingDaysGreater(),
     averageTurnoverRateGreaterThan(resolved.minTurnover),
     // extraLargeBuyRatioDominance(
