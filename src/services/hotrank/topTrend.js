@@ -108,8 +108,12 @@ export function buildHotrankTopTrendPayload({ db, windowDays = 25, limit = 10, d
     if (![trend5, trend10, trend25].every((v) => Number.isFinite(v))) {
       continue;
     }
+    const hnScoreDetail = computeHnAdaptedScore(rankSeries);
+    if (!Number.isFinite(hnScoreDetail.score)) {
+      continue;
+    }
     completeScoreCount += 1;
-    const trendScore = 0.5 * trend5 + 0.3 * trend10 + 0.2 * trend25;
+    const trendScore = hnScoreDetail.score;
 
     metrics.push({
       stock_code: item.stock_code,
@@ -120,6 +124,11 @@ export function buildHotrankTopTrendPayload({ db, windowDays = 25, limit = 10, d
       trend_10: Number(trend10.toFixed(6)),
       trend_25: Number(trend25.toFixed(6)),
       trend_score: Number(trendScore.toFixed(6)),
+      hn_score: Number(trendScore.toFixed(6)),
+      hn_persist_gain: Number(hnScoreDetail.persistGain.toFixed(6)),
+      hn_age: Number(hnScoreDetail.age.toFixed(3)),
+      hn_penalty: Number(hnScoreDetail.penalty.toFixed(6)),
+      hn_max_jump: Number(hnScoreDetail.maxJump.toFixed(6)),
       latest_rank: latestRank,
       first_rank: firstRank,
       rank_change: rankChange != null ? Number(rankChange.toFixed(3)) : null,
@@ -153,7 +162,7 @@ export function buildHotrankTopTrendPayload({ db, windowDays = 25, limit = 10, d
       reason:
         metrics.length > 0
           ? 'ok'
-          : 'no stock has enough valid points to compute trend_5/10/25 score',
+          : 'no stock has enough valid points to compute HN-adapted score',
     },
   };
   if (debug || process.env.HOTRANK_DEBUG === '1') {
@@ -207,4 +216,50 @@ function computeHeatTrendFromRankSeries(rankSeries, windowDays) {
 function toFiniteOrNull(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function computeHnAdaptedScore(rankSeries) {
+  const ALPHA = 0.9;
+  const GAMMA = 1.35;
+  const TAU = 7;
+  const LAMBDA = 0.15;
+
+  const ranks = Array.isArray(rankSeries) ? rankSeries : [];
+  if (ranks.length < 3) {
+    return { score: NaN, persistGain: 0, age: Infinity, penalty: 0, maxJump: 0 };
+  }
+
+  let persistGain = 0;
+  let maxJump = 0;
+  let lastPositiveIndex = -1;
+  let validTransitions = 0;
+
+  for (let i = 1; i < ranks.length; i += 1) {
+    const prev = Number(ranks[i - 1]);
+    const curr = Number(ranks[i]);
+    if (!Number.isFinite(prev) || !Number.isFinite(curr)) continue;
+    validTransitions += 1;
+    const improve = Math.max(0, prev - curr); // rank down = better
+    const daysAgo = ranks.length - 1 - i;
+    const weight = Math.exp(-daysAgo / TAU);
+    persistGain += improve * weight;
+    if (improve > maxJump) maxJump = improve;
+    if (improve > 0) {
+      lastPositiveIndex = i;
+    }
+  }
+
+  if (validTransitions < 3) {
+    return { score: NaN, persistGain, age: Infinity, penalty: 0, maxJump };
+  }
+
+  const age = lastPositiveIndex >= 0 ? ranks.length - 1 - lastPositiveIndex : ranks.length;
+  const penalty = LAMBDA * maxJump;
+  const adjustedGain = Math.max(0, persistGain - penalty);
+  if (adjustedGain <= 0) {
+    return { score: 0, persistGain, age, penalty, maxJump };
+  }
+
+  const score = Math.pow(adjustedGain, ALPHA) / Math.pow(age + 2, GAMMA);
+  return { score, persistGain, age, penalty, maxJump };
 }

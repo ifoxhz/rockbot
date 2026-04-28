@@ -4,6 +4,7 @@ import path, { join } from 'node:path';
 import { readDailyFundFlowPayload, normalizeDateInput } from '../services/storeDailyFlow.js';
 import { getConfig } from '../config.js';
 import { createSqliteClient, initHotrankSchema } from '../db.js';
+import { buildHotrankTopTrendPayload as buildHotrankTopTrendPayloadService } from '../services/hotrank/topTrend.js';
 
 const TURNOVER_EMA_PERIOD = 5;
 const WINDOW_OPTIONS = [5, 10, 15, 20, 25];
@@ -105,7 +106,7 @@ export function startShowlineServer({ port = 7070, defaultDate = null } = {}) {
       const windowDays = normalizePositiveInt(req.query.window, 25);
       const limit = normalizePositiveInt(req.query.limit, 10);
       const debug = String(req.query.debug || '').trim() === '1';
-      const payload = buildHotrankTopTrendPayload({
+      const payload = buildHotrankTopTrendPayloadService({
         db: hotrankDb,
         windowDays,
         limit,
@@ -365,7 +366,7 @@ function buildHotrankTrendPayload({ db, tsCode, windowSize, offset }) {
     FROM hot_rank_snapshot
     WHERE stock_code = ${db.quote(tsCode)}
       AND rank_no IS NOT NULL
-    ORDER BY capture_time ASC
+    ORDER BY trade_date ASC, capture_time ASC
     LIMIT 1000
   `);
   if (!Array.isArray(rows) || rows.length === 0) {
@@ -414,7 +415,7 @@ function buildHotrankTrendPayload({ db, tsCode, windowSize, offset }) {
     end_index: endExclusive - 1,
     rows: windowRows,
     series: {
-      labels: windowRows.map((row) => formatHotrankLabel(row.capture_time)),
+      labels: windowRows.map((row) => formatHotrankLabel(row.trade_date, row.capture_time)),
       rank: rankSeries,
       rank_trend: rankTrend.line,
       score: scoreSeries,
@@ -430,11 +431,15 @@ function buildHotrankTrendPayload({ db, tsCode, windowSize, offset }) {
   };
 }
 
-function formatHotrankLabel(captureTime) {
-  const s = String(captureTime || '');
+function formatHotrankLabel(tradeDate, captureTime) {
+  const d = String(tradeDate || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+    return d.slice(5);
+  }
+  const s = String(captureTime || '').trim();
   if (!s) return '';
-  if (s.includes('T')) return s.slice(5, 16).replace('T', ' ');
-  return s.slice(5, 16);
+  if (s.includes('T')) return s.slice(5, 10);
+  return s.slice(5, 10);
 }
 
 function toFiniteOrNull(value) {
@@ -995,7 +1000,7 @@ function renderHotrankTopTrendPage() {
     <table id="resultTable">
       <thead>
         <tr>
-          <th>#</th><th>股票</th><th>名称</th><th>score</th><th>trend_5</th><th>trend_10</th><th>trend_25</th><th>首日排名</th><th>最新排名</th><th>排名改善</th><th>平均排名</th><th>点数</th>
+          <th>#</th><th>股票</th><th>名称</th><th>hn_score</th><th>persist_gain</th><th>age</th><th>max_jump</th><th>trend_5</th><th>trend_10</th><th>trend_25</th><th>首日排名</th><th>最新排名</th><th>排名改善</th><th>平均排名</th><th>点数</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -1043,10 +1048,10 @@ function renderHotrankTopTrendPage() {
         data: {
           labels: rows.map((row) => row.stock_code),
           datasets: [
-            { label: 'score(0.5*trend_5 + 0.3*trend_10 + 0.2*trend_25)', data: rows.map((row) => row.trend_score), backgroundColor: '#e11d48' },
-            { label: 'trend_5', data: rows.map((row) => row.trend_5), backgroundColor: '#2563eb' },
-            { label: 'trend_10', data: rows.map((row) => row.trend_10), backgroundColor: '#16a34a' },
-            { label: 'trend_25', data: rows.map((row) => row.trend_25), backgroundColor: '#f59e0b' }
+            { label: 'hn_score', data: rows.map((row) => row.hn_score ?? row.trend_score), backgroundColor: '#e11d48' },
+            { label: 'persist_gain', data: rows.map((row) => row.hn_persist_gain), backgroundColor: '#2563eb' },
+            { label: 'age', data: rows.map((row) => row.hn_age), backgroundColor: '#16a34a' },
+            { label: 'max_jump', data: rows.map((row) => row.hn_max_jump), backgroundColor: '#f59e0b' }
           ]
         },
         options: { responsive: true }
@@ -1061,7 +1066,10 @@ function renderHotrankTopTrendPage() {
           index + 1,
           '<a href="/showline/hotrank/' + encodeURIComponent(row.stock_code) + '" target="_blank">' + row.stock_code + '</a>',
           row.stock_name || '',
-          row.trend_score ?? '',
+          row.hn_score ?? row.trend_score ?? '',
+          row.hn_persist_gain ?? '',
+          row.hn_age ?? '',
+          row.hn_max_jump ?? '',
           row.trend_5 ?? '',
           row.trend_10 ?? '',
           row.trend_25 ?? '',

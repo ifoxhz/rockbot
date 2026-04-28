@@ -7,6 +7,7 @@ import {
   buildHotrankTopTrendPayload,
   countHotrankDistinctTradeDates,
 } from '../services/hotrank/topTrend.js';
+import { getHotRankForStock } from '../services/hotrank/eastmoney.js';
 
 export const hotCommand = new Command('hot')
   .description('Run one hotrank data collection job')
@@ -149,6 +150,53 @@ hotCommand
     );
   });
 
+hotCommand
+  .command('stock')
+  .description('Backfill one stock hotrank history and calculate features')
+  .argument('<tsCode>', 'stock code, e.g. 600519.SH')
+  .option('--days <days>', 'history days to backfill', '25')
+  .option('--debug', 'print debug logs', false)
+  .action(async (tsCode, options) => {
+    const days = toPositiveInt(options.days, 25);
+    const debug = options.debug === true;
+    const normalizedTsCode = normalizeTsCodeInput(tsCode);
+    if (!normalizedTsCode) {
+      throw new Error('Invalid tsCode format. Use 600519.SH or 600519');
+    }
+
+    const result = await runHotrankPipeline({
+      source: 'eastmoney',
+      backfillDays: days,
+      debug,
+      fetcher: async () =>
+        getHotRankForStock({
+          tsCode: normalizedTsCode,
+          backfillDays: days,
+          debug,
+        }),
+    });
+
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          status: 'ok',
+          command: 'hot stock',
+          ts_code: normalizedTsCode,
+          days,
+          db_path: result.dbPath,
+          capture: result.capture,
+          features: {
+            calcTime: result.features.calcTime,
+            inserted: result.features.inserted,
+          },
+          table_counts: result.tableCounts,
+        },
+        null,
+        2
+      )}\n`
+    );
+  });
+
 function normalizeDate(input) {
   if (!input) return null;
   const s = String(input).trim();
@@ -163,4 +211,12 @@ function toPositiveInt(value, fallback) {
   const n = Number.parseInt(String(value || ''), 10);
   if (!Number.isFinite(n) || n <= 0) return fallback;
   return n;
+}
+
+function normalizeTsCodeInput(value) {
+  const s = String(value || '').trim().toUpperCase();
+  if (/^\d{6}\.(SH|SZ)$/.test(s)) return s;
+  if (/^(SH|SZ)\d{6}$/.test(s)) return `${s.slice(2)}.${s.slice(0, 2)}`;
+  if (/^\d{6}$/.test(s)) return s.startsWith('6') ? `${s}.SH` : `${s}.SZ`;
+  return '';
 }

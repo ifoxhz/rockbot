@@ -93,9 +93,52 @@ export async function getRiseRank(options = {}) {
   return getHotRank(options);
 }
 
+export async function getHotRankForStock(options = {}) {
+  const tsCode = normalizeTsCode(options.tsCode || options.stockCode || options.code || '');
+  if (!tsCode) {
+    throw new Error('tsCode is required, e.g. 600519.SH');
+  }
+  const backfillDays = Math.max(1, Number.parseInt(String(options.backfillDays || '25'), 10) || 25);
+  const debug = options.debug === true || process.env.HOTRANK_DEBUG === '1';
+  const srcCode = toEastmoneySrcSecurityCode(tsCode);
+  const historyRows = await fetchEastmoneyHotRankHistoryViaBrowser(srcCode, { debug });
+  const picked = historyRows
+    .sort((a, b) => String(a.trade_date).localeCompare(String(b.trade_date)))
+    .slice(-backfillDays);
+
+  const rows = picked.map((item) => ({
+    trade_date: item.trade_date,
+    stock_code: tsCode,
+    stock_name: String(options.stockName || '').trim(),
+    rank_no: item.rank_no,
+    rank_type: 'HOT',
+    score: Number.isFinite(item.rank_no) ? Math.max(0, 10000 - Number(item.rank_no)) : null,
+    price: null,
+    pct_chg: null,
+  }));
+  if (debug) {
+    process.stdout.write(
+      `[hotrank:eastmoney] single stock backfill ts_code=${tsCode} days=${backfillDays} rows=${rows.length}\n`
+    );
+  }
+  return rows;
+}
+
 function normalizeMarketType(market) {
   const m = String(market || '').trim().toUpperCase();
   if (m === 'SH' || m === 'SZ') return m;
+  return '';
+}
+
+function normalizeTsCode(raw) {
+  const s = String(raw || '').trim().toUpperCase();
+  if (/^\d{6}\.(SH|SZ)$/.test(s)) return s;
+  if (/^(SH|SZ)\d{6}$/.test(s)) {
+    return `${s.slice(2)}.${s.slice(0, 2)}`;
+  }
+  if (/^\d{6}$/.test(s)) {
+    return s.startsWith('6') ? `${s}.SH` : `${s}.SZ`;
+  }
   return '';
 }
 
