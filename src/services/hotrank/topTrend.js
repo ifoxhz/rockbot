@@ -220,9 +220,13 @@ function toFiniteOrNull(value) {
 
 function computeHnAdaptedScore(rankSeries) {
   const ALPHA = 0.9;
-  const GAMMA = 1.35;
-  const TAU = 7;
-  const LAMBDA = 0.15;
+  const GAMMA = 0.95;
+  const TAU = 12;
+  const DETERIORATE_BETA = 0.25;
+  const CONSISTENCY_COEFF = 0.5;
+  const STREAK_COEFF = 0.2;
+  const JUMP_ABS_COEFF = 0.08;
+  const JUMP_CONCENTRATION_COEFF = 0.22;
 
   const ranks = Array.isArray(rankSeries) ? rankSeries : [];
   if (ranks.length < 3) {
@@ -230,9 +234,13 @@ function computeHnAdaptedScore(rankSeries) {
   }
 
   let persistGain = 0;
+  let weightedDeteriorate = 0;
+  let totalImprove = 0;
   let maxJump = 0;
   let lastPositiveIndex = -1;
+  let improveDays = 0;
   let validTransitions = 0;
+  const nonWorseningFlags = [];
 
   for (let i = 1; i < ranks.length; i += 1) {
     const prev = Number(ranks[i - 1]);
@@ -240,13 +248,18 @@ function computeHnAdaptedScore(rankSeries) {
     if (!Number.isFinite(prev) || !Number.isFinite(curr)) continue;
     validTransitions += 1;
     const improve = Math.max(0, prev - curr); // rank down = better
+    const deteriorate = Math.max(0, curr - prev);
     const daysAgo = ranks.length - 1 - i;
     const weight = Math.exp(-daysAgo / TAU);
     persistGain += improve * weight;
+    weightedDeteriorate += deteriorate * weight;
+    totalImprove += improve;
     if (improve > maxJump) maxJump = improve;
     if (improve > 0) {
       lastPositiveIndex = i;
+      improveDays += 1;
     }
+    nonWorseningFlags.push(deteriorate === 0);
   }
 
   if (validTransitions < 3) {
@@ -254,12 +267,29 @@ function computeHnAdaptedScore(rankSeries) {
   }
 
   const age = lastPositiveIndex >= 0 ? ranks.length - 1 - lastPositiveIndex : ranks.length;
-  const penalty = LAMBDA * maxJump;
-  const adjustedGain = Math.max(0, persistGain - penalty);
-  if (adjustedGain <= 0) {
+  const consistency = improveDays / validTransitions;
+  let nonNegativeStreak = 0;
+  for (let i = nonWorseningFlags.length - 1; i >= 0; i -= 1) {
+    if (nonWorseningFlags[i]) {
+      nonNegativeStreak += 1;
+      continue;
+    }
+    break;
+  }
+  const streakBonus = Math.log1p(nonNegativeStreak);
+
+  const baseGain = persistGain - DETERIORATE_BETA * weightedDeteriorate;
+  const qualityGain =
+    Math.max(0, baseGain) *
+    (1 + CONSISTENCY_COEFF * consistency + STREAK_COEFF * streakBonus);
+  const jumpConcentration = maxJump / (totalImprove + 1e-6);
+  const penalty =
+    JUMP_ABS_COEFF * maxJump + JUMP_CONCENTRATION_COEFF * jumpConcentration * totalImprove;
+  const adjustedGain = Math.max(0, qualityGain - penalty);
+  if (adjustedGain === 0) {
     return { score: 0, persistGain, age, penalty, maxJump };
   }
 
-  const score = Math.pow(adjustedGain, ALPHA) / Math.pow(age + 2, GAMMA);
+  const score = Math.pow(adjustedGain, ALPHA) / Math.pow(age + 3, GAMMA);
   return { score, persistGain, age, penalty, maxJump };
 }

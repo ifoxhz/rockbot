@@ -402,10 +402,17 @@ function buildHotrankTrendPayload({ db, tsCode, windowSize, offset }) {
   const avgRank =
     validRanks.length > 0 ? validRanks.reduce((sum, value) => sum + value, 0) / validRanks.length : null;
   const bestRank = validRanks.length > 0 ? Math.min(...validRanks) : null;
+  const latestNamedRowInWindow = [...windowRows]
+    .reverse()
+    .find((row) => String(row?.stock_name || '').trim().length > 0);
+  const latestNamedRow = [...rows]
+    .reverse()
+    .find((row) => String(row?.stock_name || '').trim().length > 0);
+  const stockName = String(latestNamedRowInWindow?.stock_name || latestNamedRow?.stock_name || '').trim();
 
   return {
     ts_code: tsCode,
-    stock_name: String(windowRows[windowRows.length - 1]?.stock_name || ''),
+    stock_name: stockName,
     total_rows: rows.length,
     available_windows: WINDOW_OPTIONS,
     window_size: windowSize,
@@ -892,7 +899,9 @@ function renderHotrankTrendPage({ tsCode }) {
         elOffset.value = elOffset.max;
       }
       elOffsetText.textContent = elOffset.value;
-      document.getElementById('title').textContent = (trend.stock_name ? (trend.stock_name + ' ') : '') + trend.ts_code + ' Hotrank 趋势';
+      const displayName = (trend.stock_name ? (trend.stock_name + ' ') : '') + trend.ts_code;
+      document.getElementById('title').textContent = displayName + ' Hotrank 趋势';
+      document.title = displayName + ' hotrank';
       elMetric.textContent =
         '窗口=' + trend.window_size +
         ', offset=' + trend.offset +
