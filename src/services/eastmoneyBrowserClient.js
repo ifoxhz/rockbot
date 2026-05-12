@@ -711,6 +711,12 @@ export async function fetchEastmoneyFlowKlinesViaBrowser(
       });
     }
 
+    // HTTP 200 + JSONP ok, but business payload: no such symbol / no flow series.
+    // Retries and fetchFlowRows base-field fallback cannot fix this.
+    if (isEastmoneyFlowStockNotFoundPayload(result)) {
+      return [];
+    }
+
     lastResult = { ...result, attempt, resolveIp, host: EASTMONEY_PUSH2HIS_DOMAIN, fields2 };
     const retryable = isRetryableEastmoneyBrowserJsonpError(result);
     if (!retryable) break;
@@ -785,6 +791,13 @@ function stripCacheBust(url) {
   } catch {
     return url;
   }
+}
+
+function isEastmoneyFlowStockNotFoundPayload(result) {
+  if (!result?.ok || result.mode !== 'callback') return false;
+  const rc = Number(result.payload?.rc);
+  if (!Number.isFinite(rc) || rc !== 100) return false;
+  return result.payload?.data == null;
 }
 
 function isRetryableEastmoneyBrowserJsonpError(result) {

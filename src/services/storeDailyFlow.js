@@ -14,6 +14,7 @@ const DEFAULT_ANALYSIS_CONFIG = {
   minBuyRatioWinningDaysFraction: 0.5,
   extraLargeBuyTrendMinSlope: 0,
   turnoverRateTrendMinSlope: 0.01,
+  recentExtraLargeSellDays: 5,
 };
 
 export function storeDailyFundFlow(code, dailyData, options = {}) {
@@ -121,6 +122,49 @@ export function checkExtraLargeNetBuyStreak(
     rowFilters,
     'max_extra_large_net_buy_streak'
   );
+}
+
+// Recent N trading days (newest first): sum(extra_large) < 0 => window stat is net sell.
+export function recentDaysExtraLargeNetSumSell(
+  lastNDays = 5,
+  rowFilters = defaultRowFiltersForExtraLargeWindow()
+) {
+  const n = Math.max(1, Math.floor(Number(lastNDays)) || 5);
+  return (ctx) => {
+    const rows = Array.isArray(ctx?.rows) ? ctx.rows : [];
+    const sorted = [...rows].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    const recent = sorted.slice(0, n);
+    if (recent.length < n) {
+      return {
+        pass: false,
+        output: {
+          recent_extra_large_window_met: recent.length,
+          recent_extra_large_window_required: n,
+        },
+      };
+    }
+    let sum = 0;
+    for (const row of recent) {
+      if (!applyRowFilters(rowFilters, row)) {
+        return {
+          pass: false,
+          output: {
+            recent_extra_large_window_required: n,
+            recent_extra_large_window_fail_date: row?.date ?? null,
+          },
+        };
+      }
+      sum += Number(row.extra_large);
+    }
+    const sumRounded = Number(sum.toFixed(6));
+    return {
+      pass: sum < 0,
+      output: {
+        recent_extra_large_window_days: n,
+        recent_extra_large_net_sum: sumRounded,
+      },
+    };
+  };
 }
 
 function createNetBuyStreakFilter(field, minDays, rowFilters, outputKey) {
@@ -426,6 +470,7 @@ export function buildStockFilters(config = {}) {
   const resolved = resolveAnalysisConfig(config);
   return [
     checkSmallNetBuyStreak(resolved.minStreakDays),
+    recentDaysExtraLargeNetSumSell(resolved.recentExtraLargeSellDays),
     // smallVsExtraLargeNetDominance(),
     pricePositionInRange(20, 0.5, 0.9),
     // changePctStddev(2.5, 3.5),
@@ -465,6 +510,10 @@ export function resolveAnalysisConfig(overrides = {}) {
       overrides.turnoverRateTrendMinSlope,
       DEFAULT_ANALYSIS_CONFIG.turnoverRateTrendMinSlope
     ),
+    recentExtraLargeSellDays: toFiniteOrDefault(
+      overrides.recentExtraLargeSellDays,
+      DEFAULT_ANALYSIS_CONFIG.recentExtraLargeSellDays
+    ),
   };
 }
 
@@ -479,6 +528,13 @@ export function defaultRowFilters() {
 function defaultRowFiltersForField(field) {
   return [
     (row) => Number(row?.[field]) > 0,
+    (row) => row.change_pct != null && !isNaN(Number(row.change_pct)),
+  ];
+}
+
+function defaultRowFiltersForExtraLargeWindow() {
+  return [
+    (row) => Number.isFinite(Number(row?.extra_large)),
     (row) => row.change_pct != null && !isNaN(Number(row.change_pct)),
   ];
 }

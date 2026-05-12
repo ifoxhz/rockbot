@@ -366,6 +366,11 @@ export async function fetchDailyFundFlow(code, days = 25) {
     secid,
     days,
   });
+  // No flow series (e.g. secid not listed / no fflow data): server may still return HTTP 200.
+  // Skip market fetch — nothing to join; batch callers treat [] as skip and continue.
+  if (!Array.isArray(flowRows) || flowRows.length === 0) {
+    return [];
+  }
   const marketRows = await fetchDailyMarketData({
     secid,
     days,
@@ -435,6 +440,22 @@ export async function fetchDailyFundFlowBatch(codes, days = 25, opts = {}) {
   await Promise.all(
     Array.from({ length: Math.min(concurrency, list.length) }, () => worker())
   );
+
+  if (list.length > 0) {
+    const skippedNoFlowSeries = results.filter(
+      (r) => r?.ok === true && Array.isArray(r?.data) && r.data.length === 0
+    ).length;
+    const failed = results.filter((r) => r?.ok === false).length;
+    const withData = results.length - skippedNoFlowSeries - failed;
+    logEastmoneyStat('fetchDailyFundFlowBatch', {
+      days,
+      total: list.length,
+      skipped_no_flow_series: skippedNoFlowSeries,
+      failed,
+      with_data: withData,
+    });
+  }
+
   return results;
 }
 
@@ -1338,6 +1359,10 @@ async function resetEastmoneyAgent(err, context = {}) {
 
 function logEastmoneyError(label, detail) {
   console.error(`[eastmoneyDailyFlow] ${label}`, detail);
+}
+
+function logEastmoneyStat(label, detail) {
+  console.error(`[eastmoneyDailyFlow] stat ${label}`, detail);
 }
 
 function logEastmoneyDebug(label, detail) {
